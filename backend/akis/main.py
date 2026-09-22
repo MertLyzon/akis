@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI,Request,HTTPException,Depends,UploadFile,File,BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse,FileResponse,RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from typing import Literal
 from sqlalchemy import select,update,delete,func
@@ -20,7 +21,7 @@ from .media import media_url,path_for,public_base
 from .tokens import can_refresh,refresh_credential
 from .errors import PlatformError
 from .oauth import router,begin
-from .access import Actor,require,current_user,session_user,audit,ensure_bootstrap,first_system_admin,memberships_json,resolve_company,PERMISSIONS
+from .access import session_token,Actor,require,current_user,session_user,audit,ensure_bootstrap,first_system_admin,memberships_json,resolve_company,PERMISSIONS
 from . import storage
 
 Platform=Literal['x','instagram','tiktok','whatsapp']
@@ -43,9 +44,11 @@ app.include_router(router)
 from .admin import router as admin_router
 app.include_router(admin_router)
 
+APP_ORIGINS={o.strip().rstrip('/') for o in settings.app_client_origins.split(',') if o.strip()}
+
 def allowed_origins():
     with Session() as db: public=public_base(db)
-    return {settings.app_origin.rstrip('/'),public} - {''}
+    return {settings.app_origin.rstrip('/'),public,*APP_ORIGINS} - {''}
 
 @app.middleware('http')
 async def guards(req,call_next):
@@ -59,6 +62,9 @@ async def guards(req,call_next):
     response.headers['Referrer-Policy']='no-referrer'
     return response
 
+# Native apps call the API cross-origin with a bearer token; no cookies are shared with them.
+app.add_middleware(CORSMiddleware,allow_origins=sorted(APP_ORIGINS),allow_credentials=False,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Akis-Company','X-Akis-Client'],max_age=3600)
+
 @app.exception_handler(HTTPException)
 async def http_error(req,exc):
     body=exc.detail if isinstance(exc.detail,dict) else {'error':str(exc.detail)}
@@ -68,8 +74,13 @@ async def validation_error(req,exc): return JSONResponse({'error':'Alanları kon
 @app.exception_handler(PlatformError)
 async def platform_error(req,exc): return JSONResponse({'error':exc.message,'code':exc.code},400)
 
-def set_session(response,user):
-    response.set_cookie('akis_session',make_user_session(user.id,user.session_version),httponly=True,samesite='lax',secure=settings.app_origin.startswith('https'),max_age=43200)
+def set_session(response,user,req=None):
+    token=make_user_session(user.id,user.session_version)
+    if req is not None and req.headers.get('x-akis-client')=='app':
+        # Apps keep the token themselves; the web never receives it in a readable body.
+        body=json.loads(response.body);body['token']=token;response.body=json.dumps(body).encode();response.headers['content-length']=str(len(response.body))
+        return
+    response.set_cookie('akis_session',token,httponly=True,samesite='lax',secure=settings.app_origin.startswith('https'),max_age=43200)
 
 @app.get('/api/health')
 def health(): return {'ok':True,'queue':settings.queue_mode}
@@ -81,10 +92,11 @@ def me_json(db,user):
 
 @app.get('/api/session')
 def session(req:Request):
-    if req.headers.get('sec-fetch-site')=='cross-site': raise HTTPException(403,'İstek kaynağı doğrulanamadı.')
+    app_client=req.headers.get('x-akis-client')=='app'
+    if req.headers.get('sec-fetch-site')=='cross-site' and not app_client: raise HTTPException(403,'İstek kaynağı doğrulanamadı.')
     with Session() as db:
         user=session_user(db,req);fresh=False
-        if not user and settings.local_mode:
+        if not user and settings.local_mode and not app_client:
             # Loopback-only convenience: sign in as the first system admin. Log out to test other users.
             ensure_bootstrap();user=first_system_admin(db);fresh=bool(user) and req.cookies.get('akis_logged_out')!='1'
             if not fresh: user=None
@@ -118,7 +130,7 @@ def login(data:LoginInput,req:Request):
         if row: db.delete(row)
         audit(db,Actor(user.id,user.email,user.is_system_admin),'user.login','user',user.id,company_id=None,two_factor=user.totp_enabled)
         db.commit()
-        r=JSONResponse({'ok':True});set_session(r,user);r.delete_cookie('akis_logged_out');return r
+        r=JSONResponse({'ok':True});set_session(r,user,req);r.delete_cookie('akis_logged_out');return r
 
 @app.post('/api/logout')
 def logout():
@@ -131,13 +143,13 @@ class PasswordInput(BaseModel):
     new:str=Field(min_length=10,max_length=300)
 
 @app.post('/api/me/password')
-def change_password(data:PasswordInput,actor=Depends(current_user)):
+def change_password(data:PasswordInput,req:Request,actor=Depends(current_user)):
     with Session() as db:
         user=db.get(User,actor.user_id)
         if not verify_password(data.current,user.password_hash): raise HTTPException(400,'Mevcut parola yanlış.')
         user.password_hash=password_hash(data.new);user.session_version+=1;user.must_change_password=False
         audit(db,actor,'user.password_changed','user',user.id,company_id=None);db.commit()
-        r=JSONResponse({'ok':True});set_session(r,user);return r
+        r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
 @app.post('/api/me/2fa/setup')
 def totp_setup(actor=Depends(current_user)):
@@ -153,23 +165,23 @@ class CodeInput(BaseModel):
     password:str=Field(default='',max_length=300)
 
 @app.post('/api/me/2fa/enable')
-def totp_enable(data:CodeInput,actor=Depends(current_user)):
+def totp_enable(data:CodeInput,req:Request,actor=Depends(current_user)):
     with Session() as db:
         user=db.get(User,actor.user_id)
         if not user.totp_secret or not totp_verify(decrypt(user.totp_secret),data.code): raise HTTPException(400,'Kod doğrulanamadı. Uygulamadaki güncel kodu gir.')
         user.totp_enabled=True;user.session_version+=1
         audit(db,actor,'user.2fa_enabled','user',user.id,company_id=None);db.commit()
-        r=JSONResponse({'ok':True});set_session(r,user);return r
+        r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
 @app.post('/api/me/2fa/disable')
-def totp_disable(data:CodeInput,actor=Depends(current_user)):
+def totp_disable(data:CodeInput,req:Request,actor=Depends(current_user)):
     with Session() as db:
         user=db.get(User,actor.user_id)
         if not user.totp_enabled: return {'ok':True}
         if not verify_password(data.password,user.password_hash) or not totp_verify(decrypt(user.totp_secret),data.code): raise HTTPException(400,'Parola veya doğrulama kodu yanlış.')
         user.totp_enabled=False;user.totp_secret=None;user.session_version+=1
         audit(db,actor,'user.2fa_disabled','user',user.id,company_id=None);db.commit()
-        r=JSONResponse({'ok':True});set_session(r,user);return r
+        r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
 # ---------- Company state ----------
 
@@ -251,7 +263,7 @@ def refresh_connection(data:PlatformInput,actor=Depends(require('connections')))
 class OAuthInput(BaseModel): platform:Platform;account:str=Field(default='',max_length=100)
 @app.post('/api/oauth/start')
 def start_oauth(data:OAuthInput,req:Request,actor=Depends(require('connections'))):
-    with Session() as db: return {'url':begin(db,data.platform,actor,req.cookies['akis_session'],data.account)}
+    with Session() as db: return {'url':begin(db,data.platform,actor,session_token(req),data.account)}
 
 class AppInput(BaseModel):
     platform:Platform

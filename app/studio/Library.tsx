@@ -1,7 +1,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import {FileVideo,Folder,Tag,Archive,Trash2,Send,Search,Loader2,Cloud} from 'lucide-react';
 import {toast} from 'sonner';
-import {api,bytes} from './api';
+import {api,bytes,mediaSrc} from './api';
 import MediaUpload from './MediaUpload';
 
 export default function Library({can,maxMB,onUse,picker=false}:any){
@@ -16,7 +16,7 @@ return <div className="library">{can('media')&&!picker&&<section className="pane
 <div className="library-filters"><label className="search-field"><Search size={15}/><input placeholder="Dosya adında ara" value={q} onChange={e=>setQ(e.target.value)}/></label><select value={folder} onChange={e=>setFolder(e.target.value)} aria-label="Klasör"><option value="">Tüm klasörler</option>{folders.map(f=><option key={f}>{f}</option>)}</select><select value={tag} onChange={e=>setTag(e.target.value)} aria-label="Etiket"><option value="">Tüm etiketler</option>{tags.map(t=><option key={t}>{t}</option>)}</select>{!picker&&<label className="inline-options"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>Arşiv</label>}</div>
 {loading?<div className="empty-state"><Loader2 className="spin"/>Kütüphane yükleniyor…</div>:!items.length?<div className="empty-state"><Folder size={36}/><h3>{archived?'Arşiv boş.':'Kütüphanende henüz medya yok.'}</h3><p>Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.</p></div>:
 <div className="library-grid">{items.map(a=><article key={a.id} className={'library-card '+(a.status==='failed'?'asset-failed':'')}>
-<div className="library-thumb">{a.url&&a.mime_type.startsWith('image')?<img src={a.url} alt={a.filename} loading="lazy"/>:a.url?<video src={a.url} muted preload="metadata"/>:a.status==='failed'?<FileVideo size={30}/>:<Loader2 className="spin" size={26}/>}{a.stored==='cloudinary'&&<span className="cloud-badge" title="Cloudinary'de saklanıyor"><Cloud size={12}/></span>}</div>
+<div className="library-thumb">{a.url&&a.mime_type.startsWith('image')?<img src={mediaSrc(a.url)} alt={a.filename} loading="lazy"/>:a.url?<video src={mediaSrc(a.url)} muted preload="metadata"/>:a.status==='failed'?<FileVideo size={30}/>:<Loader2 className="spin" size={26}/>}{a.stored==='cloudinary'&&<span className="cloud-badge" title="Cloudinary'de saklanıyor"><Cloud size={12}/></span>}</div>
 <div className="library-info"><strong title={a.filename}>{a.filename}</strong><small>{a.status==='ready'?`${a.width}×${a.height} · ${bytes(a.size)}`:a.status==='failed'?(a.error||'Hazırlanamadı'):'Hazırlanıyor…'}</small>
 <div className="library-labels">{a.folder&&<span className="pill"><Folder size={11}/>{a.folder}</span>}{a.tags.map((t:string)=><span key={t} className="pill"><Tag size={11}/>{t}</span>)}</div>
 {editing===a.id?<form className="library-edit" onSubmit={e=>{e.preventDefault();const f=new FormData(e.currentTarget);save(a,{folder:String(f.get('folder')||''),tags:String(f.get('tags')||'').split(',')},'Medya bilgileri kaydedildi.');setEditing(null)}}><input name="folder" defaultValue={a.folder} placeholder="Klasör" list="akis-folders"/><input name="tags" defaultValue={a.tags.join(', ')} placeholder="Etiketler, virgülle"/><datalist id="akis-folders">{folders.map(f=><option key={f} value={f}/>)}</datalist><button className="primary">Kaydet</button><button type="button" className="text-button" onClick={()=>setEditing(null)}>Vazgeç</button></form>:

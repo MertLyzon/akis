@@ -26,8 +26,14 @@ class Actor:
     role:str|None=None
     def can(self,permission): return bool(self.role) and permission in PERMISSIONS[self.role]
 
+def session_token(req):
+    """Browser: httpOnly cookie. Native apps: Authorization: Bearer <same signed session>."""
+    auth=req.headers.get('authorization','')
+    if auth.lower().startswith('bearer '): return auth[7:].strip()
+    return req.cookies.get('akis_session','')
+
 def session_user(db,req):
-    parsed=read_session(req.cookies.get('akis_session',''))
+    parsed=read_session(session_token(req))
     if not parsed: return None
     user=db.get(User,parsed[0])
     if not user or user.disabled or user.session_version!=parsed[1]: return None

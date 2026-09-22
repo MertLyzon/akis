@@ -1,0 +1,7 @@
+{
+  "identifier": "default",
+  "description": "Main window: open external links (OAuth account connection happens in the system browser).",
+  "windows": ["main"],
+  "platforms": ["linux", "macOS", "windows", "android", "iOS"],
+  "permissions": ["core:default", "opener:default"]
+}

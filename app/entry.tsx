@@ -6,4 +6,6 @@ import './studio/studio.css';
 import './studio/theme-dark.css';
 import {applyTheme} from './studio/theme';
 applyTheme();
+import {registerServiceWorker} from './studio/InstallHint';
+registerServiceWorker();
 createRoot(document.getElementById('root')!).render(<Home/>);

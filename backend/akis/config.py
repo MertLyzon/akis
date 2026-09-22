@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     keep_local_media: bool = True
     backup_dir: str = str(ROOT / 'backups')
     backup_keep: int = 14
+    # Origins of the Tauri apps (desktop + mobile webviews). They authenticate with a bearer token, not cookies.
+    app_client_origins: str = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420'
 
 settings = Settings()
 # Empty DATABASE_URL in .env means "use the default" (SQLite locally, Compose sets its own).

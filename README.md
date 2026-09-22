@@ -48,6 +48,29 @@ Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adi
 
 Yerel SQLite veritabanı ve Compose PostgreSQL veritabanı ayrıdır. Docker ilk açılışta boş çalışma alanı oluşturur; yerel kayıtları veya medyayı kendiliğinden taşımaz. Geçiş yapmadan önce yedek alın; mevcut yerel uygulama kullanılmaya devam edilebilir.
 
+## Uygulamalar: Windows, macOS, Linux, Android, iPhone
+
+Windows, macOS, Linux ve Android uygulamaları [Tauri 2](https://tauri.app) ile aynı React arayüzünden üretilir (`src-tauri/`). Arayüz uygulamanın içinde gelir; veriler şirketin **barındırılan Akış sunucusunda** durur. Uygulama ilk açılışta sunucu adresini sorar (ör. `https://akis.sirketin.com`) ve web sürümüyle aynı hesaplarla giriş yapılır.
+
+- Uygulamalar çerez yerine imzalı oturum anahtarıyla (`Authorization: Bearer`) çalışır; anahtar parola veya 2FA değişince geçersiz olur. Sunucu yalnızca `APP_CLIENT_ORIGINS` listesindeki uygulama kaynaklarına CORS izni verir.
+- Sosyal medya hesabı bağlama (OAuth) güvenlik nedeniyle sistem tarayıcısında, web sürümünde yapılır; uygulama o sayfayı açar.
+- Telefonlar düz `http://` adreslerine bağlanmaz; sunucunun HTTPS olması gerekir.
+
+**iPhone ve diğer cihazlar: ana ekrana eklenen web uygulaması (PWA), ücretsiz.** Apple Developer hesabı veya Mac gerekmez. iPhone'da sunucu adresini Safari'de açın, **Paylaş → Ana Ekrana Ekle**'ye dokunun; Akış simgesiyle tam ekran açılır. Android/Chrome/Edge'de uygulama içinde **Yükle** düğmesi çıkar. Güncellemeler sunucu güncellenince herkese ulaşır. Service worker (`public/sw.js`) yalnızca uygulama kabuğunu önbelleğe alır; `/api` isteklerini, medyayı ve oturumu hiçbir zaman saklamaz. Kurulum için sunucunun HTTPS olması gerekir. Yeni bir sürümde kabuk dosyaları değiştiyse `sw.js` içindeki `CACHE` adını artırın.
+
+**Masaüstü ve Android paketleri: GitHub'da derleme (önerilen):** Actions sekmesinde **Uygulamalar → Run workflow**. Testler geçerse Windows (`.msi`, `.exe`), macOS (evrensel `.dmg`; genel depolarda GitHub'ın Mac makineleri ücretsizdir, imzasız paket ilk açılışta sağ tık → Aç ile açılır), Linux (`.deb`, `.rpm`, `.AppImage`) ve Android (`.apk`) paketleri çalıştırmanın *Artifacts* bölümüne düşer. `v0.3.0` gibi bir etiket göndermek de derlemeyi başlatır.
+
+**Kendi bilgisayarında:** [Rust](https://rustup.rs) ve platform gereksinimleri ([Tauri önkoşulları](https://tauri.app/start/prerequisites/): Windows'ta VS Build Tools, Linux'ta webkit2gtk) kurulduktan sonra:
+
+```sh
+npm run app:dev        # masaüstü, canlı yenilemeyle
+npm run app:build      # bu işletim sisteminin kurulum paketi
+npm run android:build  # Android Studio + SDK/NDK gerekir (önce: npx tauri android init)
+npm run ios:build      # yalnızca macOS + Xcode (önce: npx tauri ios init)
+```
+
+**İmzalama ve mağazalar:** CI'daki Android paketi doğrudan telefona kurulabilen hata ayıklama imzalıdır; Google Play için bir keystore ile release imzası gerekir. iPhone uygulaması Apple Developer hesabı (yıllık ücretli) ve Mac gerektirir; TestFlight/App Store dağıtımı bu hesapla yapılır. İmzasız macOS/Windows paketleri ilk açılışta işletim sistemi uyarısı gösterir; kod imzalama sertifikalarıyla kaldırılır. Uygulama kimliği `com.akis.studio` (`src-tauri/tauri.conf.json`); mağazalara göndermeden önce kendi alan adınıza göre değiştirin.
+
 ## PostgreSQL (barındırılan)
 
 Neon, Supabase, Railway gibi bir sağlayıcının bağlantı adresini `.env` içine yazın:
@@ -98,7 +121,7 @@ Her API isteği oturumdaki kullanıcıya ve seçili şirkete göre yetkilendiril
 
 ## Geliştirme ve doğrulama
 
-Aktif kod: `app/page.tsx`, `app/studio/`, `backend/akis/`, `backend/migrations/`. Önceki Cloudflare sürümünün yerel klasörde kalan dosyaları yeni sunucu tarafından kullanılmaz; dağıtım kaynağı paketi yalnızca yeni uygulamayı içerir.
+Aktif kod: `app/page.tsx`, `app/studio/`, `backend/akis/`, `backend/migrations/`, `src-tauri/` (uygulama kabuğu), `.github/workflows/apps.yml` (uygulama derlemeleri). Önceki Cloudflare sürümünün yerel klasörde kalan dosyaları yeni sunucu tarafından kullanılmaz; dağıtım kaynağı paketi yalnızca yeni uygulamayı içerir.
 
 ```sh
 python -m pytest backend/tests -q
