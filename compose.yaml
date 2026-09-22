@@ -5,7 +5,8 @@ x-backend: &backend
     dockerfile: backend/Dockerfile
   env_file: .env
   environment: &environment
-    DATABASE_URL: postgresql+psycopg://akis:${POSTGRES_PASSWORD:?Run scripts/bootstrap.py}@postgres:5432/akis
+    # A hosted DATABASE_URL in .env wins; otherwise the bundled postgres service is used.
+    DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://akis:${POSTGRES_PASSWORD:?Run scripts/bootstrap.py}@postgres:5432/akis}
     REDIS_URL: redis://redis:6379/0
     CREDENTIAL_KEY: ${CREDENTIAL_KEY:?Run scripts/bootstrap.py}
     ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?Run scripts/bootstrap.py}
@@ -14,8 +15,10 @@ x-backend: &backend
     LOCAL_MODE: 'false'
     QUEUE_MODE: celery
     MEDIA_ROOT: /app/data/media
+    BACKUP_DIR: /app/backups
   volumes:
     - media:/app/data/media
+    - backups:/app/backups
   restart: unless-stopped
 services:
   postgres:
@@ -76,3 +79,4 @@ volumes:
   postgres:
   redis:
   media:
+  backups:

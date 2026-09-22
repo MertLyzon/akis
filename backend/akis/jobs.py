@@ -2,7 +2,7 @@ import importlib, logging, time
 from sqlalchemy import select, update
 from .queue import celery
 from .db import Session
-from .models import Content,ContentPlatform,MediaAsset,Credential,Broadcast,now
+from .models import Content,ContentPlatform,MediaAsset,Credential,Broadcast,DeliveryAttempt,now
 from .errors import PlatformError
 from .media import process_asset,variant_for
 from .tokens import token_for,refresh_due
@@ -29,6 +29,7 @@ def run_delivery(identifier):
         db.commit()
         if not changed: return
         delivery=db.get(ContentPlatform,identifier);content=db.get(Content,delivery.content_id)
+        attempt=DeliveryAttempt(delivery_id=identifier,stage='start');db.add(attempt);db.commit();attempt_id=attempt.id
         try:
             asset=db.get(MediaAsset,content.asset_id) if content.asset_id else None
             if asset:
@@ -36,12 +37,13 @@ def run_delivery(identifier):
                 if asset.status!='ready': raise Waiting(10,'Medya hazırlanıyor.')
                 asset=variant_for(db,asset,delivery.platform)
                 if asset.note: delivery.progress={**delivery.progress,'media_note':asset.note};db.commit()
-            token=token_for(content.created_by,delivery.platform)
-            credential=db.scalar(select(Credential).where(Credential.owner==content.created_by,Credential.platform==delivery.platform))
+            token=token_for(content.company_id,delivery.platform)
+            credential=db.scalar(select(Credential).where(Credential.company_id==content.company_id,Credential.platform==delivery.platform))
             publisher=importlib.import_module('akis.tasks.'+MODULES[delivery.platform])
             publisher.publish(Context(db,delivery,content,credential,token,asset))
         except Waiting as wait:
-            if content.created_at<now()-86400:
+            # Measured from when the post became due, so a post scheduled weeks ahead is not timed out early.
+            if max(content.created_at,content.scheduled_at or 0,content.approved_at or 0)<now()-86400:
                 delivery.status='failed';delivery.error_code='processing_timeout';delivery.error_message='Medya bir gün içinde hazırlanamadı. Dosyayı ve platform durumunu kontrol et.'
             else:
                 delivery.status='pending';delivery.next_attempt_at=now()+wait.seconds;delivery.error_message=wait.message
@@ -59,7 +61,17 @@ def run_delivery(identifier):
             db.rollback();delivery=db.get(ContentPlatform,identifier)
             delivery.status='unknown' if delivery.final_request_started else 'failed';delivery.error_code='internal';delivery.error_message='İşlem tamamlanamadı. Gönderim geçmişini kontrol et.';delivery.updated_at=now();db.commit()
             log.error('Delivery %s stopped with internal error',identifier)
+        finish_attempt(db,attempt_id,delivery)
         update_content(db,content.id)
+
+def finish_attempt(db,attempt_id,delivery):
+    a=db.get(DeliveryAttempt,attempt_id)
+    if not a: return
+    a.finished_at=now();a.error_code=delivery.error_code;a.error_message=delivery.error_message
+    progress=delivery.progress or {}
+    a.stage='publish' if delivery.external_post_id or delivery.status=='unknown' else ('media_upload' if any(k in progress for k in ('media_id','container','publish_id')) else 'prepare')
+    a.outcome={'pending':'retry' if delivery.error_code else 'waiting'}.get(delivery.status,delivery.status)
+    db.commit()
 
 def recover_stale(db):
     stale=list(db.scalars(select(ContentPlatform).where(ContentPlatform.status=='sending',ContentPlatform.updated_at<now()-900)))
@@ -79,6 +91,11 @@ def process_media(identifier): process_asset(identifier)
 
 @celery.task(name='akis.refresh_tokens')
 def refresh_tokens(): refresh_due()
+
+@celery.task(name='akis.backup')
+def scheduled_backup():
+    from .backup import create_backup
+    create_backup()
 
 def enqueue_content(content_id):
     if settings.queue_mode!='celery': return

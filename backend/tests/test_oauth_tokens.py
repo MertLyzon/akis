@@ -5,11 +5,13 @@ from akis.db import Session
 from akis.models import Credential,OAuthApp,OAuthState,now
 from akis.security import encrypt,decrypt
 from akis.tokens import refresh_credential
+from conftest import company_id
 
 def test_x_refresh_rotates_encrypted_tokens(monkeypatch):
+    cid=company_id()
     with Session() as db:
-        c=Credential(owner='local_seedy',platform='x',access_token=encrypt('old'),refresh_token=encrypt('old-refresh'),expires_at=now()+10)
-        db.add(c);db.add(OAuthApp(platform='x',client_id='client',redirect_uri='http://localhost:5173/api/oauth/x/callback'));db.commit();identifier=c.id
+        c=Credential(company_id=cid,platform='x',access_token=encrypt('old'),refresh_token=encrypt('old-refresh'),expires_at=now()+10)
+        db.add(c);db.add(OAuthApp(company_id=cid,platform='x',client_id='client',redirect_uri='http://localhost:5173/api/oauth/x/callback'));db.commit();identifier=c.id
     def fake(*a,**k):
         assert k['data']['grant_type']=='refresh_token'
         return {'access_token':'new','refresh_token':'new-refresh','expires_in':7200}

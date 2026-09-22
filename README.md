@@ -1,8 +1,21 @@
-# Akış 0.2 — Sosyal medya stüdyosu
+# Akış 0.3 — Sosyal medya stüdyosu
 
-Türkçe, tek çalışma alanlı sosyal medya uygulaması. React arayüzü; FastAPI, SQLAlchemy ve Alembic sunucusu; üretimde PostgreSQL, Redis ve Celery kullanır.
+Türkçe, çok şirketli sosyal medya uygulaması. React arayüzü; FastAPI, SQLAlchemy ve Alembic sunucusu; üretimde PostgreSQL, Redis ve Celery kullanır.
 
-## Eklenen özellikler
+## 0.3 ile gelenler: şirket kullanımı
+
+- **Şirket çalışma alanları**: Her şirketin hesapları, içerikleri, medyası ve uygulama ayarları birbirinden ayrı tutulur. Bir kişi birden fazla şirkete üye olabilir; kenar çubuğundan şirket değiştirilir.
+- **Kullanıcılar ve roller**: Şirket yöneticisi, onaylayan, editör, görüntüleyen. Yeni üyeye geçici parola verilir; ilk girişte kendi parolasını belirlemeden hiçbir işlem yapamaz.
+- **Paylaşım onayı**: Editörün hazırladığı içerik "Onay bekliyor" durumuna geçer; onaylayan veya yönetici onayladığında yayımlanır, reddedilirse not ile editöre döner. Şirket ayarlarından kapatılabilir.
+- **Takvim ve zamanlama**: İçerik ileri bir tarihe planlanır; saatler şirketin saat dilimine göre yorumlanır. Takvim ekranı aylık görünüm sunar; plan gönderim başlamadan iptal edilebilir.
+- **İşlem geçmişi**: Kim giriş yaptı, kim içeriği değiştirdi, kim onayladı, kim hangi hesabı bağladı. Anahtarlar bu kayıtlara yazılmaz.
+- **Gönderim takibi**: Her kanalın her denemesi kaydedilir: hangi aşamada kaldı (hazırlık, medya yükleme, yayımlama), kaç kez denendi, neden başarısız oldu.
+- **Medya kütüphanesi**: Klasör, etiket, arama ve arşiv. Dosyalar tekrar yüklenmeden yeni içeriklerde kullanılır.
+- **Yönetim panelleri**: *Şirket yönetimi* ekibi, rolleri, onay kuralını, kullanımı ve işlem geçmişini gösterir. *Sistem yönetimi* şirketleri, kuyruğu, hataları, depolama tüketimini ve servis sağlığını gösterir; müşterilerin erişim anahtarlarını göremez.
+- **İki aşamalı giriş** (TOTP; Google/Microsoft Authenticator, 1Password, Authy), **otomatik günlük yedek** ve **yedekten geri yükleme kontrolü**.
+- **Cloudinary medya depolama**: Hazırlanan görsel ve videolar Cloudinary'ye yüklenir. Instagram dosyayı oradan okur, bu yüzden ayrıca herkese açık sunucu adresi gerekmez.
+
+## Önceki sürümden gelen özellikler
 
 - Sürükle-bırak veya dosyadan seçimle 100 MB'a kadar medya yükleme. Dosyalar kendi sunucunuzun kalıcı diskinde tutulur.
 - HEIC/WebP dahil görselleri JPEG'e dönüştürme, yön düzeltme, Instagram için 4:5–1.91:1 oranı ve en fazla 1920×1080. Görsel kesilmez; gerektiğinde boşluk eklenir.
@@ -16,9 +29,9 @@ Türkçe, tek çalışma alanlı sosyal medya uygulaması. React arayüzü; Fast
 
 Python 3.12 ve Node.js 22.13+ gerekir. Windows'ta uygulama klasöründe `./Baslat.ps1`, macOS/Linux'ta `sh start-local.sh` çalıştırın. İlk açılış bağımlılıkları kurar; http://localhost:5173 adresini açın. Kapatmak için terminalde Ctrl+C kullanın.
 
-Yerel kip yalnızca loopback adresinde çalışır; otomatik oturum açar, SQLite ve veritabanına kayıtlı arka plan işleyicisini kullanır. Bu kipte de bağlı hesaplara gerçek gönderim yapılabilir. Yerel portu internete açmayın. Sunucuya kurulumda aşağıdaki Docker kipi parola gerektirir.
+Yerel kip yalnızca loopback adresinde çalışır; sistem yöneticisi olarak otomatik oturum açar (başka bir kullanıcıyı denemek için çıkış yapın), SQLite ve veritabanına kayıtlı arka plan işleyicisini kullanır. `.env` içinde `DATABASE_URL` verilirse yerel kip de o PostgreSQL'e bağlanır. Bu kipte de bağlı hesaplara gerçek gönderim yapılabilir. Yerel portu internete açmayın. Sunucuya kurulumda aşağıdaki Docker kipi parola gerektirir.
 
-`scripts/bootstrap.py`, mevcut dosyaları ezmeden `.env` anahtarlarını ve ilk sunucu giriş parolasını `.local-admin-password` dosyasında oluşturur. Bu dosyaları paylaşmayın. Var olan kurulumdaki eski D1 kayıtları `scripts/import_legacy.py` ile bir kez yerel veritabanına aktarılır. Eski belirsiz/bekleyen gönderimler otomatik gönderilmez.
+`scripts/bootstrap.py`, mevcut dosyaları ezmeden `.env` anahtarlarını ve ilk sunucu giriş parolasını `.local-admin-password` dosyasında oluşturur. Bu dosyaları paylaşmayın. İlk açılışta `ADMIN_EMAIL` (varsayılan `admin@akis.local`) ve `ADMIN_PASSWORD_HASH` ile sistem yöneticisi ve ilk şirket oluşturulur. 0.2 veritabanı yükseltildiğinde tüm eski kayıtlar bu ilk şirkete taşınır. Var olan kurulumdaki eski D1 kayıtları `scripts/import_legacy.py` ile bir kez yerel veritabanına aktarılır. Eski belirsiz/bekleyen gönderimler otomatik gönderilmez.
 
 ## Windows ve Mac için Docker kurulumu
 
@@ -34,6 +47,32 @@ macOS'ta ilk komut için `python3` kullanabilirsiniz. http://localhost:8080 adre
 Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adiniz` ve `PUBLIC_BASE_URL=https://kendi-alan-adiniz` ekleyin, servisleri yeniden oluşturun. Compose web portu 127.0.0.1:8080'e bağlıdır; HTTPS proxy bu porta yönlenmelidir. LOCAL_MODE üretimde false kalmalıdır. Bu paket sunucuya otomatik yayımlanmış değildir.
 
 Yerel SQLite veritabanı ve Compose PostgreSQL veritabanı ayrıdır. Docker ilk açılışta boş çalışma alanı oluşturur; yerel kayıtları veya medyayı kendiliğinden taşımaz. Geçiş yapmadan önce yedek alın; mevcut yerel uygulama kullanılmaya devam edilebilir.
+
+## PostgreSQL (barındırılan)
+
+Neon, Supabase, Railway gibi bir sağlayıcının bağlantı adresini `.env` içine yazın:
+
+```sh
+DATABASE_URL=postgresql://kullanici:parola@sunucu/veritabani?sslmode=require
+```
+
+`postgres://` ve `postgresql://` adresleri otomatik olarak psycopg sürücüsüne çevrilir. Tabloları oluşturmak için `python -m alembic -c backend/alembic.ini upgrade head` (başlatıcı bunu kendisi yapar). Docker Compose'da `DATABASE_URL` doluysa paketlenmiş postgres yerine bu adres kullanılır.
+
+## Cloudinary
+
+`.env` içine `CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME` ekleyin. Dosyalar önce sunucuda dönüştürülür (JPEG, H.264/AAC, TikTok videosu), sonra `akis/<şirket-id>/` altına yüklenir. İşleyici bir dosyanın yerel kopyasını bulamazsa Cloudinary'den indirir; böylece API ve worker ayrı makinelerde çalışabilir. `KEEP_LOCAL_MEDIA=false` yerel kopyaları yükleme sonrası siler. Kütüphaneden silinen medya Cloudinary'den de silinir. Not: Cloudinary adresleri bağlantıyı bilen herkes tarafından açılabilir; adresler tahmin edilemez kimlikler içerir.
+
+## Yedekleme
+
+Beat servisi her gün otomatik yedek alır (`BACKUP_DIR`, varsayılan `backups/`, son 14 yedek saklanır). Sistem yönetimi ekranından elle yedek alınıp geri yükleme kontrolü yapılabilir. Komut satırından:
+
+```sh
+python scripts/backup.py create           # yedek al ve doğrula
+python scripts/backup.py verify DOSYA     # geçici veritabanına geri yükleyip kayıt sayılarını karşılaştır
+python scripts/backup.py restore DOSYA URL  # boş ve şeması kurulmuş bir veritabanına geri yükle
+```
+
+Yedekler veritabanının tamamını içerir; erişim anahtarları şifreli kalır ve geri yüklemek için aynı `CREDENTIAL_KEY` gerekir. Medya dosyaları Cloudinary'de (veya `media` hacminde) ayrıca durur.
 
 ## Uygulama içi bağlantı kurulumu
 
@@ -55,7 +94,7 @@ Erişim ve yenileme token'ları ile uygulama gizli anahtarları AES-GCM ile şif
 
 Yerelde `.env` ve `data/` klasörünü; Docker'da PostgreSQL yedeğini, `media` hacmini ve `.env` dosyasını birlikte ve erişimi kısıtlı biçimde yedekleyin. `docker compose down -v` veritabanı ve medya hacimlerini siler; normal durdurma için `docker compose down` kullanın.
 
-Bu sürüm tek yönetici/çalışma alanı içindir; ekip üyeliği ve çok kullanıcılı yetkilendirme içermez. Disk kotası/yaşam döngüsü, TLS ve sunucu yedekleme işletmecinin kurulumuna bağlıdır.
+Her API isteği oturumdaki kullanıcıya ve seçili şirkete göre yetkilendirilir; başka şirketin içerik, medya veya bağlantısına erişim reddedilir. Sistem yöneticisi bir şirkete üye değilse o şirketin içeriğini göremez. TLS ve disk kotası işletmecinin kurulumuna bağlıdır.
 
 ## Geliştirme ve doğrulama
 
@@ -69,4 +108,4 @@ python -m alembic -c backend/alembic.ini upgrade head
 
 Python komutlarını bağımlılıkların kurulu olduğu sanal ortamda çalıştırın. Alembic için `PYTHONPATH=backend` gerekir; başlatıcı bunu ayarlar.
 
-Doğrulama: 28 otomatik test geçti; gerçek HEIC/WebP ve ffmpeg dönüşümü, token şifreleme/yenileme, OAuth durum doğrulaması, kuyruk/tekrar davranışı, medya yükleme ve platform istek biçimleri kontrol edildi. Celery testi bellek broker'ıyla çalıştı. TypeScript ve üretim derlemesi geçti, tarayıcıda ekranlar kontrol edildi. Bu bilgisayarda Docker bulunmadığından Compose/PostgreSQL/Redis birlikte çalıştırılmadı. Gerçek hesaplarda OAuth ve canlı paylaşım testleri yapılmadı; platform yanıtları testlerde taklit edildi.
+Doğrulama (0.3): 44 otomatik test geçti. Önceki 28 teste ek olarak şirket izolasyonu, roller, onay/red akışı, şirket saat dilimiyle zamanlama, işlem geçmişinde anahtar sızmaması, sistem panelinde anahtar görünmemesi, gönderim denemesi kaydı, medya kütüphanesi, iki aşamalı giriş, parola değişince eski oturumların kapanması, yedek alma/geri yükleme kontrolü ve Cloudinary yükleme/indirme akışı test edildi. Alembic geçişi eski 0.2 verisiyle denendi, modellerle şema farkı yok. Cloudinary bağlantısı gerçek hesapla doğrulandı. Gerçek sosyal medya hesaplarıyla canlı paylaşım yapılmadı; platform yanıtları testlerde taklit edildi.

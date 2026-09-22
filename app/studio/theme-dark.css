@@ -1,0 +1,47 @@
+/* Dark theme. Applied when <html data-theme="dark">; see app/studio/theme.ts. */
+:root[data-theme=dark]{color-scheme:dark;--background:#12131a;--foreground:#e4e6ef;--card:#1b1d27;--primary:#8b7bff;--primary-foreground:#fff;--secondary:#262838;--muted:#20222e;--muted-foreground:#9a9fb3;--accent:#2a2645;--accent-foreground:#b3a8ff;--border:#2c2f3d;--input:#343748;--ring:#8b7bff;--sidebar:#171821;--sidebar-foreground:#a7acbf;--sidebar-accent:#2a2645;--sidebar-accent-foreground:#c3baff;--sidebar-border:#262836;--popover:#1b1d27;--popover-foreground:#e4e6ef}
+:root[data-theme=dark] body{background:#12131a;color:#e4e6ef}
+:root[data-theme=dark] :is(h1,h2,h3,strong,.brand,.field-title,label,.topbar strong,.social-profile strong,.company-switch select,.stat-card strong){color:#e4e6ef}
+:root[data-theme=dark] :is(input,textarea,select){background:#161821;color:#e4e6ef;border-color:#343748}
+:root[data-theme=dark] :is(input,textarea):focus{border-color:#8b7bff;box-shadow:0 0 0 3px #8b7bff33}
+:root[data-theme=dark] :is(input,textarea)::placeholder{color:#6d7288}
+:root[data-theme=dark] input[type=datetime-local]::-webkit-calendar-picker-indicator{filter:invert(.8)}
+:root[data-theme=dark] :is(.panel,.stat-card,.social-preview,.library-card,.connection,.channel,.secondary,.filter-tabs button,.search-field,.health){background:#1b1d27;border-color:#2c2f3d;color:#c9cddb}
+:root[data-theme=dark] :is(.topbar){background:#171821d9;border-color:#262836;color:#9a9fb3}
+:root[data-theme=dark] :is(.panel-head,.editor-footer,.post-item,.calendar-dow,.calendar-cell,.calendar-legend,.data-table td,.data-table th,.audit-list li,.page-footer,.footer-profile,.table-wrap){border-color:#2a2d3a}
+:root[data-theme=dark] :is(.workspace,.sidebar-note,.tip-card,.role-help div){background:#1d1f2b;border-color:#2c2f3d}
+:root[data-theme=dark] .app-sidebar [data-slot=sidebar-menu-button][data-active=true]{background:#2a2645;color:#c3baff}
+:root[data-theme=dark] :is(.avatar,.social-avatar){background:#2a2645;color:#c3baff}
+:root[data-theme=dark] .primary{background:#6f5cf5;border-color:#6f5cf5}
+:root[data-theme=dark] .primary:hover{background:#7f6eff}
+:root[data-theme=dark] .secondary:hover,:root[data-theme=dark] .icon-button:hover{background:#262838;color:#c3baff}
+:root[data-theme=dark] :is(.notice,.connection-banner,.expiry,.picker,.review-note){background:#1f1d33;border-color:#34305a;color:#b8b2dc}
+:root[data-theme=dark] .expiry-warn{background:#2b2415;border-color:#4d3f1d;color:#e2c07a}
+:root[data-theme=dark] :is(.dropzone){background:#1a1928;border-color:#4a4380;color:#a99ee6}
+:root[data-theme=dark] .dropzone strong{color:#d0c8ff}
+:root[data-theme=dark] :is(.editor-toolbar){background:#161821;border-color:#343748}
+:root[data-theme=dark] :is(.preview-empty,.library-thumb){background:#1f1d33;border-color:#2c2f3d}
+:root[data-theme=dark] .preview-tabs{background:#20222e}
+:root[data-theme=dark] :is(.pill,.nav-count,.calendar-item,.delivery,.data-table code,.chip-row code,.attempts code,.totp-secret){background:#262838;border-color:#30334a;color:#b3b8cc}
+:root[data-theme=dark] .attempts li{background:#1b1d27}
+:root[data-theme=dark] .data-table th{background:#1d1f2b}
+:root[data-theme=dark] .data-table td{color:#c1c5d4}
+:root[data-theme=dark] .calendar-cell.past{background:#171821}
+:root[data-theme=dark] .channel.chosen,:root[data-theme=dark] .filter-tabs button.active{background:#2a2645;border-color:#5a4fb0;color:#c3baff}
+:root[data-theme=dark] :is(.delivery.failed,.delivery.unknown,.error,.warn-pill,.health.bad){background:#331c20;border-color:#56282e;color:#f0a3a8}
+:root[data-theme=dark] .delivery.sent,:root[data-theme=dark] .saved{background:#16301f;color:#7fd6a5}
+:root[data-theme=dark] .secret-card{background:#2b2415;border-color:#4d3f1d;color:#e2c07a}
+:root[data-theme=dark] .secret-card code{background:#1b1d27;border-color:#4d3f1d;color:#f4dfa6}
+:root[data-theme=dark] .status-pending_approval{background:#3a2e12!important;color:#f0c865!important}
+:root[data-theme=dark] .status-scheduled{background:#2a2645!important;color:#c3baff!important}
+:root[data-theme=dark] .status-completed{background:#16301f!important;color:#7fd6a5!important}
+:root[data-theme=dark] :is(.status-attention,.status-rejected){background:#331c20!important;color:#f0a3a8!important}
+:root[data-theme=dark] .status-processing{background:#172540!important;color:#8fb3f5!important}
+:root[data-theme=dark] :is(.login-screen){background:#12131a}
+:root[data-theme=dark] :is(.page-heading p,.field-help,.post-meta,.preview-text,.stat-card span,.library-info small,.audit-time){color:#9a9fb3}
+.theme-switch{display:flex;gap:2px;background:#f0f1f6;border-radius:8px;padding:3px;margin:0 10px 6px}
+.theme-switch button{flex:1;border:0;background:transparent;border-radius:6px;padding:5px;font-size:11px;font-weight:600;color:#7d8497;display:inline-flex;align-items:center;justify-content:center;gap:4px}
+.theme-switch button[aria-pressed=true]{background:#fff;color:#5945e8;box-shadow:0 1px 2px #0000001a}
+:root[data-theme=dark] .theme-switch{background:#20222e}
+:root[data-theme=dark] .theme-switch button[aria-pressed=true]{background:#2a2645;color:#c3baff}
+.login-theme{position:fixed;top:16px;right:16px;width:220px}

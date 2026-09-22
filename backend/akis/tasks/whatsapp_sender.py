@@ -1,6 +1,6 @@
 from ..queue import celery
 from ..platform_http import request
-from ..media import path_for
+from ..storage import local_file
 from ..config import settings
 from ..errors import PlatformError
 
@@ -9,7 +9,7 @@ def publish(ctx):
     media_id=ctx.progress.get('media_id');a=ctx.asset
     if a and not media_id:
         if a.size>(16*1024*1024 if a.mime_type.startswith('video') else 5*1024*1024): raise PlatformError('whatsapp','size','WhatsApp için görsel en fazla 5 MB, video en fazla 16 MB olabilir.')
-        with path_for(a.storage_key).open('rb') as file:
+        with local_file(a) as local,local.open('rb') as file:
             r=request('whatsapp','POST',base+'/media',ctx.token,data={'messaging_product':'whatsapp','type':a.mime_type},files={'file':('media.mp4' if a.mime_type.startswith('video') else 'media.jpg',file,a.mime_type)})
         media_id=r.get('id')
         if not media_id: raise PlatformError('whatsapp','media_id','WhatsApp medya yüklemesini tamamlayamadı.',retryable=True)
