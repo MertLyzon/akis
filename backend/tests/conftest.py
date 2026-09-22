@@ -2,6 +2,7 @@ import os,sys,tempfile,base64,secrets
 from pathlib import Path
 import pytest
 root=Path(__file__).resolve().parents[2]
+(root/'work').mkdir(exist_ok=True)
 test_root=Path(tempfile.mkdtemp(prefix='akis-tests-',dir=root/'work'))
 os.environ.update(DATABASE_URL='sqlite:///'+str(test_root/'test.db'),MEDIA_ROOT=str(test_root/'media'),CREDENTIAL_KEY=base64.b64encode(secrets.token_bytes(32)).decode(),QUEUE_MODE='test',LOCAL_MODE='true',APP_ORIGIN='http://localhost:5173',CLOUDINARY_URL='',ADMIN_PASSWORD_HASH='',BACKUP_DIR=str(test_root/'backups'))
 sys.path.insert(0,str(root/'backend'))
