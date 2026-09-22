@@ -1,0 +1,78 @@
+name: akis
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  env_file: .env
+  environment: &environment
+    DATABASE_URL: postgresql+psycopg://akis:${POSTGRES_PASSWORD:?Run scripts/bootstrap.py}@postgres:5432/akis
+    REDIS_URL: redis://redis:6379/0
+    CREDENTIAL_KEY: ${CREDENTIAL_KEY:?Run scripts/bootstrap.py}
+    ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?Run scripts/bootstrap.py}
+    APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+    PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+    LOCAL_MODE: 'false'
+    QUEUE_MODE: celery
+    MEDIA_ROOT: /app/data/media
+  volumes:
+    - media:/app/data/media
+  restart: unless-stopped
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: akis
+      POSTGRES_USER: akis
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/bootstrap.py}
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U akis']
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: alembic -c backend/alembic.ini upgrade head
+    restart: 'no'
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *backend
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      retries: 10
+  worker:
+    <<: *backend
+    command: celery -A akis.queue:celery worker --loglevel=warning --concurrency=2
+    depends_on:
+      api: {condition: service_healthy}
+  beat:
+    <<: *backend
+    command: celery -A akis.queue:celery beat --loglevel=warning --schedule=/app/data/media/celerybeat-schedule
+    depends_on:
+      api: {condition: service_healthy}
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports: ['127.0.0.1:8080:80']
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  postgres:
+  redis:
+  media:

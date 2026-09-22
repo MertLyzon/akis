@@ -1,0 +1,6 @@
+.env
+.local-admin-password
+data/
+node_modules/
+.venv/
+.DS_Store

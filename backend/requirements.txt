@@ -1,0 +1,15 @@
+fastapi==0.115.12
+uvicorn==0.34.3
+SQLAlchemy==2.0.41
+alembic==1.16.1
+celery[redis]==5.5.3
+psycopg[binary]==3.2.9
+pydantic-settings==2.9.1
+python-multipart==0.0.20
+cryptography==45.0.4
+httpx==0.28.1
+Pillow==11.2.1
+pillow-heif==0.22.0
+imageio-ffmpeg==0.6.0
+pytest==8.4.0
+fakeredis==2.30.1
