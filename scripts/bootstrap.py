@@ -12,7 +12,7 @@ if not env.exists():
     key=key or base64.b64encode(secrets.token_bytes(32)).decode()
     password=secrets.token_urlsafe(18);salt=secrets.token_hex(16)
     digest=hashlib.scrypt(password.encode(),salt=salt.encode(),n=16384,r=8,p=1).hex()
-    env.write_text(f'CREDENTIAL_KEY={key}\nADMIN_PASSWORD_HASH={salt}:{digest}\nPOSTGRES_PASSWORD={secrets.token_urlsafe(24)}\n',encoding='utf-8')
+    env.write_text(f'CREDENTIAL_KEY={key}\nADMIN_PASSWORD_HASH={salt}:{digest}\nADMIN_EMAIL=admin@akis.local\nPOSTGRES_PASSWORD={secrets.token_urlsafe(24)}\nDATABASE_URL=\nCLOUDINARY_URL=\n',encoding='utf-8')
     (root/'.local-admin-password').write_text(password,encoding='utf-8')
     print('Local secrets created. Initial server login password: .local-admin-password')
 else: print('Existing .env preserved.')

@@ -5,7 +5,8 @@ import pillow_heif
 from sqlalchemy import select, update
 from .config import settings
 from .db import Session
-from .models import MediaAsset, now, AppSetting
+from .models import MediaAsset, AppSetting, now
+from . import storage
 from .security import sign
 from .errors import PlatformError
 
@@ -23,11 +24,13 @@ def public_base(db):
     return (row.value if row else settings.public_base_url).rstrip('/')
 
 def media_url(asset,db,public=False):
+    # Cloudinary URLs are already public HTTPS, which is what Instagram needs to fetch the file.
+    if asset.remote_url: return asset.remote_url
     expires=now()+86400*2
     relative=f'/api/media/{asset.id}/file?expires={expires}&signature={sign(f"{asset.id}:{expires}")}'
     if public:
         base=public_base(db)
-        if not base.startswith('https://'): raise PlatformError('instagram','public_url','Instagram’ın dosyayı okuyabilmesi için Ayarlar bölümüne bu sunucuya yönlenen herkese açık HTTPS adresini ekle.')
+        if not base.startswith('https://'): raise PlatformError('instagram','public_url','Instagram’ın dosyayı okuyabilmesi için Cloudinary’yi yapılandır veya Ayarlar bölümüne bu sunucuya yönlenen herkese açık HTTPS adresini ekle.')
         return base+relative
     return relative
 
@@ -110,7 +113,10 @@ def process_asset(asset_id):
                 key=a.id+'.mp4';target=path_for(key)
                 a.width,a.height,a.duration_seconds,_=transcode(source,target)
                 a.mime_type='video/mp4';a.note='Video H.264/AAC biçiminde hazırlandı.'
-            a.storage_key=key;a.size=target.stat().st_size;a.status='ready';a.updated_at=now();db.commit()
+            a.storage_key=key;a.size=target.stat().st_size
+            publish_remote(a,target)
+            if source!=target: source.unlink(missing_ok=True)
+            a.status='ready';a.updated_at=now();db.commit()
         except Exception as exc:
             a.status='failed';a.error=exc.message if isinstance(exc,PlatformError) else 'Dosya okunamadı. Geçerli bir görsel veya video yükle.';a.updated_at=now();db.commit()
 
@@ -122,10 +128,20 @@ def variant_for(db,source,platform):
     with __import__('akis.tokens',fromlist=['asset_lock']).asset_lock(source.id):
         existing=db.scalar(select(MediaAsset).where(MediaAsset.source_asset_id==source.id,MediaAsset.variant=='tiktok'))
         if existing and existing.status=='ready': return existing
-        v=existing or MediaAsset(owner=source.owner,filename='tiktok.mp4',storage_key='',mime_type='video/mp4',source_asset_id=source.id,variant='tiktok',is_auto_generated=True,status='converting')
+        v=existing or MediaAsset(company_id=source.company_id,uploaded_by=source.uploaded_by,filename='tiktok.mp4',storage_key='',mime_type='video/mp4',source_asset_id=source.id,variant='tiktok',is_auto_generated=True,status='converting')
         if not existing: db.add(v);db.flush()
         key=v.id+'.mp4';target=path_for(key)
-        v.width,v.height,v.duration_seconds,_=transcode(path_for(source.storage_key),target,vertical=True,still=source.mime_type.startswith('image/'))
-        v.storage_key=key;v.size=target.stat().st_size;v.status='ready';v.updated_at=now()
+        with storage.local_file(source) as original:
+            v.width,v.height,v.duration_seconds,_=transcode(original,target,vertical=True,still=source.mime_type.startswith('image/'))
+        v.storage_key=key;v.size=target.stat().st_size
+        publish_remote(v,target)
+        v.status='ready';v.updated_at=now()
         v.note='TikTok için görselin 4 saniyelik, sessiz ses kanallı dikey videoya çevrildi.' if source.mime_type.startswith('image/') else 'TikTok için video 9:16 dikey alana yerleştirildi.'
         db.commit();return v
+
+def publish_remote(asset,path):
+    """Copy a processed file to Cloudinary when configured; the local copy is kept only as a cache."""
+    if not storage.enabled(): return
+    try: asset.remote_url,asset.remote_id=storage.upload(path,asset)
+    except Exception: raise PlatformError('media','storage','Medya depolama alanına yüklenemedi. Cloudinary ayarlarını ve kotasını kontrol et.')
+    if not settings.keep_local_media: path.unlink(missing_ok=True)

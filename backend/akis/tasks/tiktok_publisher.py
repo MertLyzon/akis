@@ -1,7 +1,7 @@
 from urllib.parse import urlsplit
 from ..queue import celery
 from ..platform_http import request
-from ..media import path_for
+from ..storage import local_file
 from ..security import encrypt,decrypt
 from ..errors import PlatformError
 from .common import Waiting
@@ -21,7 +21,7 @@ def publish(ctx):
         ctx.checkpoint(publish_id=publish_id,upload_url=encrypt(url),chunk_size=chunk_size,chunk_count=count,uploaded=0)
     if not ctx.progress.get('upload_complete'):
         url=decrypt(ctx.progress['upload_url']);size=ctx.progress['chunk_size'];count=ctx.progress['chunk_count']
-        with path_for(a.storage_key).open('rb') as file:
+        with local_file(a) as local,local.open('rb') as file:
             index=ctx.progress.get('uploaded',0);file.seek(index*size)
             while index<count:
                 chunk=file.read() if index==count-1 else file.read(size)

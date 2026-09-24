@@ -32,7 +32,7 @@ def refresh_credential(credential_id,force=False):
             if c.expires_at and c.expires_at<=now(): raise PlatformError(c.platform,'401')
             return decrypt(c.access_token)
         if c.refresh_expires_at and c.refresh_expires_at<=now(): raise PlatformError(c.platform,'invalid_grant')
-        app=db.get(OAuthApp,c.platform)
+        app=db.get(OAuthApp,(c.company_id,c.platform))
         try:
             if c.platform=='instagram':
                 if c.updated_at>now()-86400: return decrypt(c.access_token)
@@ -56,9 +56,9 @@ def refresh_credential(credential_id,force=False):
         except PlatformError as exc:
             c.refresh_error=exc.message;db.commit();raise
 
-def token_for(owner,platform):
+def token_for(company_id,platform):
     with Session() as db:
-        c=db.scalar(select(Credential).where(Credential.owner==owner,Credential.platform==platform))
+        c=db.scalar(select(Credential).where(Credential.company_id==company_id,Credential.platform==platform))
         if not c: raise PlatformError(platform,'missing','Bu hesap bağlı değil. Bağlantılar bölümünden hesabı bağla.')
         identifier=c.id
     return refresh_credential(identifier)

@@ -6,10 +6,11 @@ from akis.models import MediaAsset,ContentPlatform,AppSetting,Credential,OAuthAp
 from akis.media import path_for
 from akis.jobs import run_delivery
 from akis.security import encrypt,decrypt
+from conftest import company_id
 
 def media(mime='image/jpeg'):
     with Session() as db:
-        a=MediaAsset(owner='local_seedy',filename='sample',storage_key='sample.jpg',mime_type=mime,status='ready',width=500,height=500,size=0)
+        a=MediaAsset(company_id=company_id(),filename='sample',storage_key='sample.jpg',mime_type=mime,status='ready',width=500,height=500,size=0)
         db.add(a);db.flush();a.storage_key=a.id+('.jpg' if mime.startswith('image') else '.mp4')
         path=path_for(a.storage_key)
         if mime.startswith('image'): Image.new('RGB',(500,500),'blue').save(path)
@@ -70,9 +71,10 @@ def test_tiktok_file_upload_does_not_need_public_domain(job,monkeypatch):
 
 def test_tiktok_refresh_rotation(monkeypatch):
     from akis.tokens import refresh_credential
+    cid=company_id()
     with Session() as db:
-        c=Credential(owner='local_seedy',platform='tiktok',access_token=encrypt('old'),refresh_token=encrypt('old-refresh'),expires_at=now()+5)
-        db.add(c);db.add(OAuthApp(platform='tiktok',client_id='key',client_secret=encrypt('secret'),redirect_uri='https://test.example/api/oauth/tiktok/callback'));db.commit();identifier=c.id
+        c=Credential(company_id=cid,platform='tiktok',access_token=encrypt('old'),refresh_token=encrypt('old-refresh'),expires_at=now()+5)
+        db.add(c);db.add(OAuthApp(company_id=cid,platform='tiktok',client_id='key',client_secret=encrypt('secret'),redirect_uri='https://test.example/api/oauth/tiktok/callback'));db.commit();identifier=c.id
     monkeypatch.setattr('akis.tokens.request',lambda *a,**k:{'access_token':'new','refresh_token':'new-refresh','expires_in':86400,'refresh_expires_in':31536000})
     assert refresh_credential(identifier)=='new'
     with Session() as db: c=db.get(Credential,identifier);assert decrypt(c.refresh_token)=='new-refresh' and c.refresh_expires_at>now()+30000000

@@ -18,6 +18,20 @@ class Settings(BaseSettings):
     ffmpeg_path: str = ''
     ffprobe_path: str = ''
     queue_mode: str = 'celery'
+    admin_email: str = 'admin@akis.local'
+    cloudinary_url: str = ''
+    # Keep processed files on local disk after uploading to Cloudinary (cache for workers on the same host).
+    keep_local_media: bool = True
+    backup_dir: str = str(ROOT / 'backups')
+    backup_keep: int = 14
+    # Origins of the Tauri apps (desktop + mobile webviews). They authenticate with a bearer token, not cookies.
+    app_client_origins: str = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420'
 
 settings = Settings()
+# Empty DATABASE_URL in .env means "use the default" (SQLite locally, Compose sets its own).
+if not settings.database_url: settings.database_url = 'sqlite:///' + str(ROOT / 'data' / 'akis.db')
+# Hosted providers (Neon, Supabase, Railway…) give postgres:// URLs; SQLAlchemy needs the psycopg driver named.
+for prefix in ('postgres://','postgresql://'):
+    if settings.database_url.startswith(prefix): settings.database_url='postgresql+psycopg://'+settings.database_url[len(prefix):]
+(ROOT / 'data').mkdir(exist_ok=True)
 Path(settings.media_root).mkdir(parents=True, exist_ok=True)

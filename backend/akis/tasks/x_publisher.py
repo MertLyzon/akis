@@ -1,7 +1,7 @@
 import base64
 from ..queue import celery
 from ..platform_http import request
-from ..media import path_for
+from ..storage import local_file
 from ..errors import PlatformError
 from .common import Waiting
 
@@ -17,7 +17,7 @@ def publish(ctx):
             ctx.checkpoint(media_id=media_id,segment=0)
         if not ctx.progress.get('finalized'):
             chunk_size=4*1024*1024
-            with path_for(asset.storage_key).open('rb') as file:
+            with local_file(asset) as local,local.open('rb') as file:
                 segment=ctx.progress.get('segment',0);file.seek(segment*chunk_size)
                 while chunk:=file.read(chunk_size):
                     request('x','POST',f'https://api.x.com/2/media/upload/{media_id}/append',ctx.token,files={'media':('chunk',chunk,'application/octet-stream')},data={'segment_index':str(segment)})

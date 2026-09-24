@@ -4,3 +4,10 @@ data/
 node_modules/
 .venv/
 .DS_Store
+work/
+backups/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+test_sonucu.txt
+dist/
