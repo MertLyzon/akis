@@ -14,6 +14,15 @@ from .config import settings
 router=APIRouter()
 SCOPES={'x':'tweet.read tweet.write users.read offline.access media.write','tiktok':'user.info.basic,video.upload','instagram':'instagram_business_basic,instagram_business_content_publish','whatsapp':'whatsapp_business_management,whatsapp_business_messaging'}
 
+def _instagram_request(stage,*args,**kwargs):
+    """Keep tokens out of OAuth errors while identifying the failed Meta step."""
+    try: return platform_request('instagram',*args,**kwargs)
+    except PlatformError as exc:
+        labels={'short_token':'yetkilendirme kodu','long_token':'uzun ömürlü token','profile':'profil doğrulama'}
+        suffix=f':{exc.reason}' if exc.reason else ''
+        message=('Meta geliştirici hesabının API erişimini engelledi. Meta hesabındaki zorunlu doğrulamaları tamamlayıp tekrar dene.' if exc.reason=='api_access_blocked' else f'Instagram {labels[stage]} aşamasını reddetti.')
+        raise PlatformError('instagram',f'{stage}:{exc.code}{suffix}',message,exc.retryable,exc.ambiguous) from exc
+
 def begin(db,platform,actor,session,account_id=''):
     app=db.get(OAuthApp,(actor.company_id,platform))
     if not app: raise HTTPException(400,'Önce Ayarlar bölümüne bu platformun uygulama bilgilerini ekle.')
@@ -50,10 +59,10 @@ def exchange(platform,app,code,details):
         return data,data.get('open_id',''),'TikTok hesabı','oauth'
     if platform=='instagram':
         body.update(client_id=app.client_id,client_secret=decrypt(app.client_secret))
-        data=platform_request(platform,'POST','https://api.instagram.com/oauth/access_token',data=body)
+        data=_instagram_request('short_token','POST','https://api.instagram.com/oauth/access_token',data=body)
         data=data.get('data',[data])[0] if isinstance(data.get('data'),list) else data
-        long=platform_request(platform,'GET','https://graph.instagram.com/access_token',params={'grant_type':'ig_exchange_token','client_secret':decrypt(app.client_secret),'access_token':data.get('access_token','')})
-        profile=platform_request(platform,'GET',f'https://graph.instagram.com/{settings.graph_version}/me',long.get('access_token'),params={'fields':'user_id,username'})
+        long=_instagram_request('long_token','GET','https://graph.instagram.com/access_token',params={'grant_type':'ig_exchange_token','client_secret':decrypt(app.client_secret),'access_token':data.get('access_token','')})
+        profile=_instagram_request('profile','GET',f'https://graph.instagram.com/{settings.graph_version}/me',long.get('access_token'),params={'fields':'user_id,username'})
         return long,str(profile.get('user_id') or data.get('user_id') or profile.get('id','')),profile.get('username','Instagram hesabı'),'long_lived'
     data=platform_request(platform,'GET',f'https://graph.facebook.com/{settings.graph_version}/oauth/access_token',params={'client_id':app.client_id,'client_secret':decrypt(app.client_secret),'redirect_uri':details['redirect_uri'],'code':code})
     # Confirm this token can access the intended phone number before replacing a connection.
@@ -92,7 +101,7 @@ def callback(platform:str,req:Request):
             audit(db,Actor(row.user_id,user.email if user else '',False,row.company_id),'connection.oauth','credential',c.platform,account=label);db.commit()
             ok=True;message='Hesabın bağlandı. Bu pencereyi kapatabilirsin.'
     except HTTPException as exc: message=str(exc.detail)
-    except PlatformError as exc: message=exc.message
+    except PlatformError as exc: message=f'{exc.message} (Kod: {exc.code})'
     except Exception: message='Hesap bağlanamadı. Uygulama bilgilerini ve kayıtlı dönüş adresini kontrol et.'
     event=json.dumps({'type':'akis-oauth','ok':ok,'message':message}).replace('<','\\u003c')
     origin=json.dumps(settings.app_origin)

@@ -1,10 +1,12 @@
-import base64,hashlib,json
+import base64,hashlib,json,pytest
 from urllib.parse import urlsplit,parse_qs
 from sqlalchemy import select
 from akis.db import Session
 from akis.models import Credential,OAuthApp,OAuthState,now
 from akis.security import encrypt,decrypt
 from akis.tokens import refresh_credential
+from akis.errors import PlatformError
+from akis.oauth import _instagram_request
 from conftest import company_id
 
 def test_x_refresh_rotates_encrypted_tokens(monkeypatch):
@@ -46,3 +48,16 @@ def test_oauth_state_is_bound_to_browser_session(client,monkeypatch):
     client.cookies.clear();client.get('/api/session')
     assert 'Bağlantı isteğinin' in client.get('/api/oauth/x/callback',params={'state':state,'code':'fake'}).text
     with Session() as db: assert db.scalar(select(Credential)) is None
+
+def test_oauth_callback_shows_safe_platform_error_code(client,monkeypatch):
+    client.post('/api/settings/oauth',json={'platform':'x','client_id':'client','redirect_uri':'http://localhost:5173/api/oauth/x/callback'})
+    state=parse_qs(urlsplit(client.post('/api/oauth/start',json={'platform':'x'}).json()['url']).query)['state'][0]
+    monkeypatch.setattr('akis.oauth.exchange',lambda *args:(_ for _ in ()).throw(PlatformError('x','100')))
+    response=client.get('/api/oauth/x/callback',params={'state':state,'code':'fake-code'})
+    assert 'Kod: 100' in response.text
+
+def test_instagram_oauth_error_identifies_safe_stage(monkeypatch):
+    monkeypatch.setattr('akis.oauth.platform_request',lambda *args,**kwargs:(_ for _ in ()).throw(PlatformError('instagram','200',reason='api_access_blocked')))
+    with pytest.raises(PlatformError) as caught: _instagram_request('profile','GET','https://graph.instagram.com/me')
+    assert caught.value.code=='profile:200:api_access_blocked'
+    assert 'zorunlu doğrulamaları' in caught.value.message

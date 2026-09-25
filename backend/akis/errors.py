@@ -13,9 +13,10 @@ MESSAGES = {
  ('x','403'): 'X paylaşım izni eksik veya API planı bu işlemi desteklemiyor. tweet.write ve media.write izinlerini kontrol edip hesabı yeniden bağla.',
 }
 class PlatformError(Exception):
-    def __init__(self,platform,code,message=None,retryable=False,ambiguous=False):
+    def __init__(self,platform,code,message=None,retryable=False,ambiguous=False,reason=''):
         self.platform,self.code=str(platform),str(code)
         self.retryable,self.ambiguous=retryable,ambiguous
+        self.reason=reason
         self.message=message or MESSAGES.get((self.platform,self.code)) or generic(self.code)
         super().__init__(self.message)
 def generic(code):
