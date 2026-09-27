@@ -1,4 +1,4 @@
-import io,json,time,uuid
+import io,json,os,time,uuid
 from contextlib import contextmanager
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -195,6 +195,19 @@ def test_backup_and_restore_check(client):
     body=r.json();assert body['verified'] and body['counts']['contents']==1 and body['counts']['users']>=1
     assert client.post(f"/api/system/backup/{body['file']}/verify").json()['ok']
     assert client.post('/api/system/backup/..%2F..%2Fetc/verify').status_code in (400,404)
+
+def test_local_worker_creates_only_one_verified_daily_backup(client,tmp_path,monkeypatch):
+    from akis import jobs
+    from akis.config import settings
+    monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
+    first=jobs.ensure_local_daily_backup()
+    assert first and first['file'].endswith('.json.gz')
+    assert jobs.ensure_local_daily_backup() is None
+    from akis.backup import verify_backup
+    assert verify_backup(first['file'])['ok']
+    if os.name!='nt':
+        assert (tmp_path.stat().st_mode&0o777)==0o700
+        assert ((tmp_path/first['file']).stat().st_mode&0o777)==0o600
 
 def test_cloudinary_upload_and_url(client,monkeypatch):
     from akis import storage

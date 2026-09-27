@@ -97,6 +97,15 @@ def scheduled_backup():
     from .backup import create_backup
     create_backup()
 
+def ensure_local_daily_backup():
+    """Create a verified backup when local mode has no backup from the last 24 hours."""
+    from .backup import create_backup, list_backups, verify_backup
+    backups=list_backups()
+    if backups and backups[0]['created_at']>=int(time.time())-86400: return None
+    result=create_backup();check=verify_backup(result['file'])
+    if not check['ok']: raise RuntimeError(f"Backup verification failed: {check['mismatches']}")
+    return result
+
 def enqueue_content(content_id):
     if settings.queue_mode!='celery': return
     with Session() as db:
@@ -121,7 +130,7 @@ def dispatch():
 
 def local_worker(stop):
     # Development fallback when Docker/Redis are unavailable; uses the same durable rows and publishers.
-    last_refresh=0
+    last_refresh=0;last_backup_check=0
     while not stop.wait(2):
         try:
             with Session() as db:
@@ -133,4 +142,6 @@ def local_worker(stop):
                 if stop.is_set(): return
                 run_delivery(identifier)
             if time.monotonic()-last_refresh>300: refresh_due();last_refresh=time.monotonic()
+            if time.monotonic()-last_backup_check>300:
+                ensure_local_daily_backup();last_backup_check=time.monotonic()
         except Exception: log.error('Local background worker paused; retrying next cycle')
