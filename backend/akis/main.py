@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI,Request,HTTPException,Depends,UploadFile,File,BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse,FileResponse,RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from typing import Literal
@@ -60,6 +61,10 @@ async def guards(req,call_next):
     if not req.url.path.endswith('/file'): response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
+    response.headers['X-Frame-Options']='DENY'
+    response.headers['Content-Security-Policy']="frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
+    if settings.app_origin.startswith('https://'): response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 
 # Native apps call the API cross-origin with a bearer token; no cookies are shared with them.
@@ -112,22 +117,32 @@ class LoginInput(BaseModel):
 @app.post('/api/login')
 def login(data:LoginInput,req:Request):
     email=(data.email or settings.admin_email).strip().lower()
-    identifier='login:'+hashlib.sha256(((req.client.host if req.client else 'unknown')+'|'+email).encode()).hexdigest()
+    ip=req.client.host if req.client else 'unknown'
+    identifiers=[
+        ('login:'+hashlib.sha256((ip+'|'+email).encode()).hexdigest(),5),
+        ('login-account:'+hashlib.sha256(email.encode()).hexdigest(),20),
+    ]
     with Session() as db:
-        row=db.get(AppSetting,identifier);info=json.loads(row.value) if row else {'count':0,'until':0}
-        if info['until']>now() and info['count']>=5: raise HTTPException(429,'Çok fazla deneme yapıldı. 15 dakika sonra tekrar dene.')
+        limits=[]
+        for identifier,maximum in identifiers:
+            row=db.get(AppSetting,identifier);info=json.loads(row.value) if row else {'count':0,'until':0}
+            if info['until']>now() and info['count']>=maximum: raise HTTPException(429,'Çok fazla deneme yapıldı. 15 dakika sonra tekrar dene.')
+            limits.append((identifier,row,info))
         user=db.scalar(select(User).where(User.email==email))
         ok=bool(user) and not user.disabled and verify_password(data.password,user.password_hash)
         if ok and user.totp_enabled:
             if not data.code: raise HTTPException(401,{'error':'Doğrulama uygulamandaki 6 haneli kodu gir.','needs_code':True})
             ok=totp_verify(decrypt(user.totp_secret),data.code)
         if not ok:
-            if info['until']<=now(): info={'count':0,'until':now()+900}
-            info['count']+=1
-            if not row: row=AppSetting(key=identifier,value='');db.add(row)
-            row.value=json.dumps(info);db.commit()
+            for identifier,row,info in limits:
+                if info['until']<=now(): info={'count':0,'until':now()+900}
+                info['count']+=1
+                if not row: row=AppSetting(key=identifier,value='');db.add(row)
+                row.value=json.dumps(info)
+            db.commit()
             raise HTTPException(401,{'error':'E-posta, parola veya doğrulama kodu yanlış.','needs_code':bool(user and user.totp_enabled and data.code)})
-        if row: db.delete(row)
+        for _,row,_ in limits:
+            if row: db.delete(row)
         audit(db,Actor(user.id,user.email,user.is_system_admin),'user.login','user',user.id,company_id=None,two_factor=user.totp_enabled)
         db.commit()
         r=JSONResponse({'ok':True});set_session(r,user,req);r.delete_cookie('akis_logged_out');return r
@@ -568,3 +583,8 @@ def retry(data:RetryInput,actor=Depends(require('approve'))):
         if row.status!='failed': raise HTTPException(400,'Yalnızca kesin başarısız gönderimler yeniden denenebilir.')
         changed=db.execute(update(ContentPlatform).where(ContentPlatform.id==row.id,ContentPlatform.status=='failed').values(status='pending',next_attempt_at=now(),retry_count=0,error_code=None,error_message=None,final_request_started=False)).rowcount
         p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();return {'ok':bool(changed)}
+
+# The public launcher builds the Vite app before starting Uvicorn. Serving that
+# immutable build here keeps the development server off the public internet.
+frontend_dist=Path(__file__).resolve().parents[2]/'dist'
+if frontend_dist.is_dir(): app.mount('/',StaticFiles(directory=frontend_dist,html=True),name='studio')

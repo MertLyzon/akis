@@ -83,6 +83,8 @@ def test_viewer_is_read_only(client):
         assert v.get('/api/state').json()['settings']['oauth_apps']==[]
 
 def test_companies_are_isolated(client):
+    f=io.BytesIO();Image.new('RGB',(16,16),'red').save(f,'PNG')
+    a_asset=client.post('/api/media',files={'file':('private.png',f.getvalue(),'image/png')}).json()['id']
     client.post('/api/connections',json={'platform':'x','token':'company-a-secret','label':'A hesabı'})
     a_post=post(client).json()['id']
     r=client.post('/api/system/companies',json={'name':'Firma B','admin_email':'b@firmab.com'})
@@ -91,6 +93,10 @@ def test_companies_are_isolated(client):
         s=b.get('/api/state').json()
         assert s['company']['name']=='Firma B' and s['posts']==[] and s['connections']==[]
         assert b.post(f'/api/posts/{a_post}/approve',json={}).status_code==404
+        assert b.get(f'/api/media/{a_asset}').status_code==404
+        assert b.patch(f'/api/media/{a_asset}',json={'folder':'çalındı'}).status_code==404
+        assert b.delete(f'/api/media/{a_asset}').status_code==404
+        assert b.get(f'/api/media/{a_asset}/file').status_code==404
         assert b.get('/api/system/overview').status_code==403
         # Asking for another company's workspace explicitly is refused.
         a_company=client.get('/api/state').json()['company']['id']
@@ -194,7 +200,7 @@ def test_backup_and_restore_check(client):
     r=client.post('/api/system/backup');assert r.status_code==200,r.text
     body=r.json();assert body['verified'] and body['counts']['contents']==1 and body['counts']['users']>=1
     assert client.post(f"/api/system/backup/{body['file']}/verify").json()['ok']
-    assert client.post('/api/system/backup/..%2F..%2Fetc/verify').status_code in (400,404)
+    assert client.post('/api/system/backup/..%2F..%2Fetc/verify').status_code in (400,404,405)
 
 def test_local_worker_creates_only_one_verified_daily_backup(client,tmp_path,monkeypatch):
     from akis import jobs
@@ -241,6 +247,9 @@ def test_worker_downloads_from_cloudinary_when_local_copy_missing(monkeypatch,tm
     a.remote_url='https://evil.example/x.jpg'
     with pytest.raises(FileNotFoundError):
         with storage.local_file(a): pass
+    a.remote_url='https://evilcloudinary.com/x.jpg'
+    with pytest.raises(FileNotFoundError):
+        with storage.local_file(a): pass
 
 def test_backup_cli_runs_standalone(client,tmp_path):
     # Runs in a fresh interpreter: the backup module must register every table itself.
@@ -253,3 +262,18 @@ def test_backup_cli_runs_standalone(client,tmp_path):
     assert r.returncode==0,r.stderr
     body=json.loads(r.stdout)
     assert body['verified'] and body['counts']['users']>=1 and 'delivery_attempts' in body['counts']
+
+def test_legacy_import_encrypts_tokens(client,tmp_path,monkeypatch):
+    import importlib.util,sqlite3
+    from pathlib import Path
+    legacy=tmp_path/'.wrangler/state/v3/d1/legacy.sqlite';legacy.parent.mkdir(parents=True)
+    old=sqlite3.connect(legacy)
+    old.executescript('create table connections(platform text, token text, account text); create table posts(id text, created text, status text, text text, platforms text, recipient text, template text, language text, media text); create table deliveries(id text, post_id text, platform text, status text, error text, external_id text);')
+    old.execute('insert into connections values(?,?,?)',('x','legacy-plain-secret','123'));old.commit();old.close()
+    spec=importlib.util.spec_from_file_location('legacy_import_test',Path(__file__).resolve().parents[2]/'scripts/import_legacy.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);monkeypatch.setattr(module,'root',tmp_path)
+    assert module.main()==0
+    from akis.security import decrypt
+    with Session() as db:
+        value=db.scalar(select(Credential.access_token).where(Credential.platform=='x'))
+    assert value!='legacy-plain-secret' and decrypt(value)=='legacy-plain-secret'

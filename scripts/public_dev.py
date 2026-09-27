@@ -59,7 +59,7 @@ def main() -> None:
     if provider == "ngrok":
         if not shutil.which("ngrok"):
             raise SystemExit("ngrok bulunamadi. macOS: brew install ngrok/ngrok/ngrok")
-        tunnel_command = ["ngrok", "http", "5173", "--url", origin]
+        tunnel_command = ["ngrok", "http", "8000", "--url", origin]
         tunnel_label = "ngrok Tunnel"
     elif provider == "cloudflare":
         if not shutil.which("cloudflared"):
@@ -73,7 +73,7 @@ def main() -> None:
             "--protocol",
             "http2",
             "--url",
-            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8000",
             "run",
             tunnel,
         ]
@@ -97,6 +97,7 @@ def main() -> None:
         env=env,
     )
     subprocess.run([sys.executable, "scripts/import_legacy.py"], check=True, env=env)
+    subprocess.run(["npm", "run", "build"], check=True, env=env)
 
     processes: list[subprocess.Popen] = []
     try:
@@ -117,18 +118,12 @@ def main() -> None:
             )
         )
         processes.append(
-            subprocess.Popen(
-                ["node", "node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "5173"],
-                env=env,
-            )
-        )
-        processes.append(
             subprocess.Popen(tunnel_command, env=env)
         )
         print(f"Akis: {origin}/  (Ctrl+C tum servisleri durdurur)", flush=True)
 
         while True:
-            for name, process in zip(("Backend", "Frontend", tunnel_label), processes):
+            for name, process in zip(("Backend", tunnel_label), processes):
                 code = process.poll()
                 if code is not None:
                     raise RuntimeError(f"{name} durdu (cikis kodu: {code}). Yukaridaki ciktiyi kontrol edin.")

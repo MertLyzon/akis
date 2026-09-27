@@ -57,7 +57,7 @@ Sonraki açılışlarda frontend, backend ve tüneli tek terminalden birlikte ç
 sh start-public.sh
 ```
 
-`Ctrl+C` üç süreci de kapatır. Adres değişmediği için OAuth sağlayıcılarındaki dönüş adresi yalnızca bir kez `https://akis.example.com/api/oauth/<platform>/callback` olarak kaydedilir. Cloudflare tünel kimlik dosyalarını ve token'larını repoya eklemeyin.
+Başlatıcı arayüzü üretim paketi olarak derler; FastAPI hem arayüzü hem API'yi sunar ve tünel yalnızca bu sunucuya bağlanır. Böylece Vite geliştirme sunucusu internete açılmaz. `Ctrl+C` iki süreci de kapatır. Adres değişmediği için OAuth sağlayıcılarındaki dönüş adresi yalnızca bir kez `https://akis.example.com/api/oauth/<platform>/callback` olarak kaydedilir. Cloudflare tünel kimlik dosyalarını ve token'larını repoya eklemeyin.
 
 Alan adınız yoksa ngrok ücretsiz hesapla hesaba özel sabit bir geliştirme adresi verir. `ngrok config add-authtoken ...` komutunu ngrok panelinden **bir kez** çalıştırın; token'ı `.env` içine veya repoya koymayın. Sonra `.env` ayarları şöyle olmalıdır:
 

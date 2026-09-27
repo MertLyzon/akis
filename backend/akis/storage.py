@@ -47,7 +47,7 @@ def local_file(asset):
         yield path;return
     if not asset.remote_url: raise FileNotFoundError('Medya dosyası bulunamadı.')
     host=urlsplit(asset.remote_url).hostname or ''
-    if not host.endswith('cloudinary.com'): raise FileNotFoundError('Medya kaynağı doğrulanamadı.')
+    if host!='cloudinary.com' and not host.endswith('.cloudinary.com'): raise FileNotFoundError('Medya kaynağı doğrulanamadı.')
     folder=Path(tempfile.mkdtemp(prefix='akis-media-',dir=settings.media_root))
     target=folder/('file'+Path(asset.storage_key or '.bin').suffix)
     try:
