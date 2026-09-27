@@ -33,6 +33,42 @@ Yerel kip yalnızca loopback adresinde çalışır; sistem yöneticisi olarak ot
 
 `scripts/bootstrap.py`, mevcut dosyaları ezmeden `.env` anahtarlarını ve ilk sunucu giriş parolasını `.local-admin-password` dosyasında oluşturur. Bu dosyaları paylaşmayın. İlk açılışta `ADMIN_EMAIL` (varsayılan `admin@akis.local`) ve `ADMIN_PASSWORD_HASH` ile sistem yöneticisi ve ilk şirket oluşturulur. 0.2 veritabanı yükseltildiğinde tüm eski kayıtlar bu ilk şirkete taşınır. Var olan kurulumdaki eski D1 kayıtları `scripts/import_legacy.py` ile bir kez yerel veritabanına aktarılır. Eski belirsiz/bekleyen gönderimler otomatik gönderilmez.
 
+### Sabit geliştirme adresi (Cloudflare Tunnel)
+
+`trycloudflare.com` Quick Tunnel adresleri geçicidir. Sabit bir adres için Cloudflare DNS'inde yönetilen bir alan adı ve bir kez oluşturulan named tunnel gerekir. Örnek kurulum (`akis.example.com` yerine kendi adresinizi yazın):
+
+```sh
+cloudflared tunnel login
+cloudflared tunnel create akis-dev
+cloudflared tunnel route dns akis-dev akis.example.com
+```
+
+Ardından `.env` içine aşağıdakileri ekleyin:
+
+```dotenv
+APP_ORIGIN=https://akis.example.com
+PUBLIC_BASE_URL=https://akis.example.com
+CLOUDFLARE_TUNNEL=akis-dev
+```
+
+Sonraki açılışlarda frontend, backend ve tüneli tek terminalden birlikte çalıştırmak yeterlidir:
+
+```sh
+sh start-public.sh
+```
+
+`Ctrl+C` üç süreci de kapatır. Adres değişmediği için OAuth sağlayıcılarındaki dönüş adresi yalnızca bir kez `https://akis.example.com/api/oauth/<platform>/callback` olarak kaydedilir. Cloudflare tünel kimlik dosyalarını ve token'larını repoya eklemeyin.
+
+Alan adınız yoksa ngrok ücretsiz hesapla hesaba özel sabit bir geliştirme adresi verir. `ngrok config add-authtoken ...` komutunu ngrok panelinden **bir kez** çalıştırın; token'ı `.env` içine veya repoya koymayın. Sonra `.env` ayarları şöyle olmalıdır:
+
+```dotenv
+APP_ORIGIN=https://hesabiniza-atanan-adres.ngrok-free.dev
+PUBLIC_BASE_URL=https://hesabiniza-atanan-adres.ngrok-free.dev
+PUBLIC_TUNNEL_PROVIDER=ngrok
+```
+
+Bu kurulumda da sonraki açılışların tek komutu `sh start-public.sh` olur.
+
 ## Windows ve Mac için Docker kurulumu
 
 Docker Desktop/Compose ve ilk anahtarları üretmek için Python gerekir. Uygulama klasöründe:
