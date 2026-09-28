@@ -608,10 +608,12 @@ def create_content(data:ContentInput,background:BackgroundTasks,actor=Depends(re
             if existing.company_id!=actor.company_id or existing.fingerprint!=fingerprint: raise HTTPException(409,'Bu istek daha önce farklı içerikle kaydedilmiş. Gönderiler ekranını kontrol et.')
             return {'id':identifier,'alreadySaved':True}
         company=db.get(Company,actor.company_id)
-        p=Content(id=identifier,company_id=actor.company_id,created_by=actor.user_id,fingerprint=fingerprint);db.add(p);db.flush()
-        outcome=apply_input(db,p,data,actor,company)
-        audit(db,actor,'content.'+{'draft':'draft_saved','submitted':'submitted','approved':'approved'}[outcome],'content',identifier,platforms=p.platforms,scheduled_at=p.scheduled_at)
-        try: db.commit()
+        p=Content(id=identifier,company_id=actor.company_id,created_by=actor.user_id,fingerprint=fingerprint)
+        try:
+            db.add(p);db.flush()
+            outcome=apply_input(db,p,data,actor,company)
+            audit(db,actor,'content.'+{'draft':'draft_saved','submitted':'submitted','approved':'approved'}[outcome],'content',identifier,platforms=p.platforms,scheduled_at=p.scheduled_at)
+            db.commit()
         except IntegrityError:
             db.rollback();old=db.get(Content,identifier)
             if old and old.company_id==actor.company_id and old.fingerprint==fingerprint: return {'id':identifier,'alreadySaved':True}

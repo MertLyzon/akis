@@ -533,12 +533,14 @@ def test_hsts_only_on_https_origin(client,monkeypatch):
     assert client.get('/api/health').headers['strict-transport-security'].startswith('max-age=31536000')
 
 def test_same_request_id_in_parallel_creates_one_content(client):
-    body={'requestId':str(uuid.uuid4()),'text':'Tek sefer','platforms':['x']};codes=[]
+    body={'requestId':str(uuid.uuid4()),'text':'Tek sefer','platforms':['x']};codes=[];errors=[]
     def send():
-        with anon() as c:
-            c.get('/api/session');codes.append(c.post('/api/posts',json=body).status_code)
+        try:
+            with anon() as c:
+                c.get('/api/session');codes.append(c.post('/api/posts',json=body).status_code)
+        except Exception as exc: errors.append(exc)
     threads=[threading.Thread(target=send) for _ in range(4)];[t.start() for t in threads];[t.join() for t in threads]
-    assert set(codes)<={202,409} and 202 in codes
+    assert errors==[] and codes==[202]*4
     with Session() as db: assert db.scalar(select(func.count()).select_from(Content).where(Content.id==body['requestId']))==1
 
 def test_interrupted_upload_leaves_no_file(client):
