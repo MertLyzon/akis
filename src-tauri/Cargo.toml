@@ -13,8 +13,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+# Same minor as @tauri-apps/api and @tauri-apps/plugin-opener in package.json; tauri build refuses a mismatch.
+tauri = { version = "~2.11", features = [] }
+tauri-plugin-opener = "~2.5"
 
 [profile.release]
 codegen-units = 1

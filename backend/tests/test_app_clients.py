@@ -15,12 +15,13 @@ def test_cors_preflight_allows_app_origin_only(client):
     assert 'access-control-allow-origin' not in bad.headers
 
 def test_app_login_returns_token_and_bearer_works(client):
-    r=client.post('/api/company/members',json={'email':'mobil@firma.com','role':'editor'});password=r.json()['temporary_password']
+    from test_companies import add_member
+    password=add_member(client,'mobil@firma.com','editor')
     c=app_client()
     r=c.post('/api/login',json={'email':'mobil@firma.com','password':password},headers=APP)
     assert r.status_code==200 and r.json()['token'] and 'akis_session' not in r.cookies
     token=r.json()['token'];auth={**APP,'Authorization':'Bearer '+token}
-    # Temporary password must be replaced first; the new token comes back in the body.
+    # A password change returns the new token in the body and ends the old one.
     r=c.post('/api/me/password',json={'current':password,'new':'mobil-kalici-parola'},headers=auth);assert r.status_code==200
     auth['Authorization']='Bearer '+r.json()['token']
     assert c.get('/api/session',headers={**auth,'Sec-Fetch-Site':'cross-site'}).json()['user']['email']=='mobil@firma.com'

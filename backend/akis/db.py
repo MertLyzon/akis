@@ -11,5 +11,7 @@ if settings.database_url.startswith('sqlite'):
     def sqlite_pragmas(connection, _):
         connection.execute('PRAGMA foreign_keys=ON')
         connection.execute('PRAGMA journal_mode=WAL')
+        # Durable across app crashes in WAL mode; skips an fsync per commit (the worker commits often).
+        connection.execute('PRAGMA synchronous=NORMAL')
 
 Session = sessionmaker(engine, expire_on_commit=False)

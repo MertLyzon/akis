@@ -77,6 +77,9 @@ def callback(platform:str,req:Request):
         parsed=read_session(session)
         if not parsed: raise HTTPException(401,'Oturumun süresi doldu. Akış’a yeniden giriş yap.')
         with Session() as db:
+            # Same checks as every API call: a session revoked by a password/2FA change or a disabled account must not finish a connection.
+            owner=db.get(User,parsed[0])
+            if not owner or owner.disabled or owner.session_version!=parsed[1]: raise HTTPException(401,'Oturumun süresi doldu. Akış’a yeniden giriş yap.')
             row=db.get(OAuthState,state)
             if not row or row.platform!=platform or row.expires_at<now() or row.used or row.session_hash!=hashlib.sha256(session.encode()).hexdigest() or row.user_id!=parsed[0]: raise HTTPException(400,'Bağlantı isteğinin süresi dolmuş veya daha önce kullanılmış.')
             member=db.scalar(select(Membership).where(Membership.company_id==row.company_id,Membership.user_id==row.user_id))

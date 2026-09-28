@@ -25,10 +25,22 @@ def user_client(email,password,code=''):
             assert c.post('/api/me/password',json={'current':password,'new':password+'-kalici'}).status_code==200
         yield c
 
+def accept_invite(token,password,**extra):
+    """Open the invitation in a fresh browser and accept it; returns the response."""
+    from fastapi.testclient import TestClient
+    from akis.main import app
+    with TestClient(app,base_url='http://localhost:5173',headers=ORIGIN) as c:
+        c.post('/api/logout');c.cookies.clear()
+        return c.post(f'/api/invites/{token}/accept',json={'password':password,**extra})
+
 def add_member(client,email,role):
+    """Invite, then accept as the invitee with a password they chose. Returns that password."""
     r=client.post('/api/company/members',json={'email':email,'role':role})
     assert r.status_code==200,r.text
-    return r.json()['temporary_password']
+    password='davet-'+uuid.uuid4().hex[:12]
+    accepted=accept_invite(r.json()['invite_token'],password)
+    assert accepted.status_code==200,accepted.text
+    return password
 
 def post(client,**extra):
     body={'requestId':str(uuid.uuid4()),'text':'Merhaba dünya','platforms':['x'],'send':True,**extra}
@@ -169,22 +181,27 @@ def test_two_factor_login(client):
     with user_client('guvenli@firma.com',password) as c:
         secret=c.post('/api/me/2fa/setup').json()['secret']
         assert c.post('/api/me/2fa/enable',json={'code':'000000'}).status_code==400
-        assert c.post('/api/me/2fa/enable',json={'code':totp_code(secret,int(time.time()//30))}).status_code==200
+        enabled_step=int(time.time()//30)
+        assert c.post('/api/me/2fa/enable',json={'code':totp_code(secret,enabled_step)}).status_code==200
     from fastapi.testclient import TestClient
     from akis.main import app
     with TestClient(app,base_url='http://localhost:5173',headers=ORIGIN) as c:
         c.post('/api/logout')
-        password+='-kalici'
         r=c.post('/api/login',json={'email':'guvenli@firma.com','password':password})
         assert r.status_code==401 and r.json()['needs_code']
         assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':'123456'}).status_code==401
-        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':totp_code(secret,int(time.time()//30))}).status_code==200
+        # The code that enabled 2FA was already used; a captured code cannot be replayed.
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':totp_code(secret,enabled_step)}).status_code==401
+        next_code=totp_code(secret,enabled_step+1)
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':next_code}).status_code==200
+        c.post('/api/logout')
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':next_code}).status_code==401
 
 def test_password_change_invalidates_old_sessions(client):
     password=add_member(client,'sifre@firma.com','viewer')
     with user_client('sifre@firma.com',password) as c:
         old_cookie=c.cookies.get('akis_session')
-        assert c.post('/api/me/password',json={'current':password+'-kalici','new':'yeni-guclu-parola'}).status_code==200
+        assert c.post('/api/me/password',json={'current':password,'new':'yeni-guclu-parola'}).status_code==200
         assert c.get('/api/state').status_code==200
         c.cookies.set('akis_session',old_cookie)
         assert c.get('/api/state').status_code==401

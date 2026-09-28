@@ -5,14 +5,16 @@ import {api,bytes,mediaSrc} from './api';
 import MediaUpload from './MediaUpload';
 
 export default function Library({can,maxMB,onUse,picker=false}:any){
-const [items,setItems]=useState<any[]>([]),[folders,setFolders]=useState<string[]>([]),[folder,setFolder]=useState(''),[tag,setTag]=useState(''),[q,setQ]=useState(''),[archived,setArchived]=useState(false),[loading,setLoading]=useState(true),[editing,setEditing]=useState<string|null>(null);
-const load=useCallback(async()=>{try{const r=await api('media?'+new URLSearchParams({folder,tag,q,archived:String(archived)}));setItems(r.items);setFolders(r.folders)}catch(e:any){toast.error(e.message)}finally{setLoading(false)}},[folder,tag,q,archived]);
+const [items,setItems]=useState<any[]>([]),[folders,setFolders]=useState<string[]>([]),[folder,setFolder]=useState(''),[tag,setTag]=useState(''),[q,setQ]=useState(''),[search,setSearch]=useState(''),[archived,setArchived]=useState(false),[loading,setLoading]=useState(true),[editing,setEditing]=useState<string|null>(null);
+// Search waits for a typing pause instead of querying on every keystroke.
+useEffect(()=>{const id=setTimeout(()=>setSearch(q.trim()),300);return()=>clearTimeout(id)},[q]);
+const load=useCallback(async()=>{try{const r=await api('media?'+new URLSearchParams({folder,tag,q:search,archived:String(archived)}));setItems(r.items);setFolders(r.folders)}catch(e:any){toast.error(e.message)}finally{setLoading(false)}},[folder,tag,search,archived]);
 useEffect(()=>{load()},[load]);
 useEffect(()=>{if(!items.some(a=>['processing','converting'].includes(a.status)))return;const id=setTimeout(load,3000);return()=>clearTimeout(id)},[items,load]);
 async function save(a:any,changes:any,msg:string){try{await api('media/'+a.id,changes,'PATCH');toast.success(msg);load()}catch(e:any){toast.error(e.message)}}
 async function remove(a:any){if(!confirm(`"${a.filename}" kalıcı olarak silinsin mi?`))return;try{await api('media/'+a.id,{},'DELETE');toast.success('Medya silindi.');load()}catch(e:any){toast.error(e.message)}}
 const tags=[...new Set(items.flatMap(a=>a.tags))].sort();
-return <div className="library">{can('media')&&!picker&&<section className="panel library-upload"><MediaUpload asset={null} onUploaded={()=>load()} onRemove={()=>{}} onBusy={()=>{}} maxMB={maxMB}/></section>}
+return <div className="library">{can('media')&&!picker&&<section className="panel library-upload"><MediaUpload asset={null} onUploaded={()=>load()} onRemove={()=>{}} onBusy={()=>{}} maxMB={maxMB} multiple/></section>}
 <div className="library-filters"><label className="search-field"><Search size={15}/><input placeholder="Dosya adında ara" value={q} onChange={e=>setQ(e.target.value)}/></label><select value={folder} onChange={e=>setFolder(e.target.value)} aria-label="Klasör"><option value="">Tüm klasörler</option>{folders.map(f=><option key={f}>{f}</option>)}</select><select value={tag} onChange={e=>setTag(e.target.value)} aria-label="Etiket"><option value="">Tüm etiketler</option>{tags.map(t=><option key={t}>{t}</option>)}</select>{!picker&&<label className="inline-options"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>Arşiv</label>}</div>
 {loading?<div className="empty-state"><Loader2 className="spin"/>Kütüphane yükleniyor…</div>:!items.length?<div className="empty-state"><Folder size={36}/><h3>{archived?'Arşiv boş.':'Kütüphanende henüz medya yok.'}</h3><p>Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.</p></div>:
 <div className="library-grid">{items.map(a=><article key={a.id} className={'library-card '+(a.status==='failed'?'asset-failed':'')}>

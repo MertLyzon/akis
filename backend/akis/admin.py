@@ -3,15 +3,15 @@
 System admins see operational metadata only. Nothing here reads or returns access tokens,
 refresh tokens or OAuth client secrets.
 """
-import re, secrets
+import hashlib, re, secrets
 from zoneinfo import ZoneInfo, available_timezones
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from .config import settings
 from .db import Session, engine
-from .models import Company, User, Membership, AuditLog, Content, ContentPlatform, MediaAsset, Credential, DeliveryAttempt, now
+from .models import Company, User, Membership, AuditLog, Content, ContentPlatform, MediaAsset, Credential, DeliveryAttempt, Invitation, now
 from .security import password_hash
 from .access import require, system_admin, audit, ROLE_NAMES
 from . import storage
@@ -49,7 +49,8 @@ def company_overview(actor=Depends(require('members'))):
         c=db.get(Company,actor.company_id)
         members=[{'user_id':u.id,'email':u.email,'name':u.name,'role':m.role,'role_name':ROLE_NAMES[m.role],'totp_enabled':u.totp_enabled,'must_change_password':u.must_change_password,'disabled':u.disabled,'since':m.created_at}
             for m,u in db.execute(select(Membership,User).join(User,User.id==Membership.user_id).where(Membership.company_id==c.id).order_by(User.email))]
-        return {'company':{'id':c.id,'name':c.name,'timezone':c.timezone,'require_approval':c.require_approval},'members':members,'usage':usage(db,c.id),'roles':ROLE_NAMES}
+        invites=[invite_json(i) for i in db.scalars(select(Invitation).where(Invitation.company_id==c.id,Invitation.accepted_at.is_(None),Invitation.revoked==False,Invitation.expires_at>now()).order_by(Invitation.created_at.desc()))]
+        return {'company':{'id':c.id,'name':c.name,'timezone':c.timezone,'require_approval':c.require_approval},'members':members,'invites':invites,'usage':usage(db,c.id),'roles':ROLE_NAMES}
 
 class CompanyEdit(BaseModel):
     name:str|None=Field(default=None,min_length=1,max_length=120)
@@ -73,15 +74,42 @@ class MemberInput(BaseModel):
     name:str=Field(default='',max_length=120)
     role:Role='editor'
 
+INVITE_SECONDS=7*86400
+def invite_hash(token): return hashlib.sha256(token.encode()).hexdigest()
+
+def invite_json(i):
+    return {'id':i.id,'email':i.email,'role':i.role,'role_name':ROLE_NAMES[i.role],'created_at':i.created_at,'expires_at':i.expires_at}
+
 @router.post('/api/company/members')
 def add_member(data:MemberInput,actor=Depends(require('members'))):
+    """Create a one-time invitation. The answer is identical whether or not the e-mail has an account,
+    and no account is created or attached here: the person joins only by accepting the link."""
+    email=data.email.strip().lower()
+    if not EMAIL.match(email): raise HTTPException(400,'Geçerli bir e-posta adresi gir.')
+    token=secrets.token_urlsafe(32)
     with Session() as db:
-        user,password=find_or_create_user(db,data.email,data.name)
-        if db.scalar(select(Membership).where(Membership.company_id==actor.company_id,Membership.user_id==user.id)): raise HTTPException(400,'Bu kişi zaten ekipte.')
-        db.add(Membership(company_id=actor.company_id,user_id=user.id,role=data.role))
-        audit(db,actor,'member.added','user',user.id,email=user.email,role=data.role,new_account=bool(password));db.commit()
-    # The temporary password is shown once to the admin and never stored in plain text.
-    return {'ok':True,'email':user.email,'temporary_password':password}
+        # Members are already listed on this screen, so refusing a current member reveals nothing new.
+        if db.scalar(select(Membership.id).join(User,User.id==Membership.user_id).where(Membership.company_id==actor.company_id,User.email==email)): raise HTTPException(400,'Bu kişi zaten ekipte.')
+        for old in db.scalars(select(Invitation).where(Invitation.company_id==actor.company_id,Invitation.email==email,Invitation.accepted_at.is_(None),Invitation.revoked==False)): old.revoked=True
+        i=Invitation(company_id=actor.company_id,email=email,name=data.name.strip(),role=data.role,token_hash=invite_hash(token),invited_by=actor.user_id,expires_at=now()+INVITE_SECONDS)
+        db.add(i);db.flush()
+        audit(db,actor,'member.invited','invitation',i.id,email=email,role=data.role);db.commit()
+        # The token is shown once to the admin; only its hash is stored.
+        return {'ok':True,'email':email,'invite_token':token,'invite_path':'/#davet='+token,'expires_at':i.expires_at}
+
+@router.get('/api/company/invites')
+def list_invites(actor=Depends(require('members'))):
+    with Session() as db:
+        return {'items':[invite_json(i) for i in db.scalars(select(Invitation).where(Invitation.company_id==actor.company_id,Invitation.accepted_at.is_(None),Invitation.revoked==False,Invitation.expires_at>now()).order_by(Invitation.created_at.desc()))]}
+
+@router.delete('/api/company/invites/{invite_id}')
+def revoke_invite(invite_id:str,actor=Depends(require('members'))):
+    with Session() as db:
+        i=db.get(Invitation,invite_id)
+        if not i or i.company_id!=actor.company_id: raise HTTPException(404,'Davet bulunamadı.')
+        if not i.revoked and i.accepted_at is None:
+            i.revoked=True;audit(db,actor,'member.invite_revoked','invitation',i.id,email=i.email);db.commit()
+    return {'ok':True}
 
 class RoleInput(BaseModel): role:Role
 
@@ -122,12 +150,13 @@ def reset_password(user_id:str,actor=Depends(require('members'))):
     return {'ok':True,'temporary_password':password}
 
 @router.get('/api/audit')
-def audit_log(before:int=0,action:str='',limit:int=100,actor=Depends(require('audit'))):
+def audit_log(before:int=0,before_id:str='',action:str='',limit:int=100,actor=Depends(require('audit'))):
     with Session() as db:
         q=select(AuditLog).where(AuditLog.company_id==actor.company_id)
-        if before: q=q.where(AuditLog.created_at<before)
+        # (created_at, id) cursor: several entries often share a second, and none may be skipped between pages.
+        if before: q=q.where(or_(AuditLog.created_at<before,and_(AuditLog.created_at==before,AuditLog.id<before_id)) if before_id else AuditLog.created_at<before)
         if action: q=q.where(AuditLog.action.startswith(action))
-        rows=list(db.scalars(q.order_by(AuditLog.created_at.desc()).limit(min(max(limit,1),200))))
+        rows=list(db.scalars(q.order_by(AuditLog.created_at.desc(),AuditLog.id.desc()).limit(min(max(limit,1),200))))
         return {'items':[{'id':r.id,'at':r.created_at,'user':r.user_email,'action':r.action,'target_type':r.target_type,'target_id':r.target_id,'details':r.details} for r in rows]}
 
 # ---------- System admin ----------
@@ -208,3 +237,4 @@ def verify(name:str,actor=Depends(system_admin)):
     if not re.fullmatch(r'akis-\d{8}-\d{6}\.json\.gz',name): raise HTTPException(400,'Geçersiz yedek adı.')
     try: return verify_backup(name)
     except FileNotFoundError: raise HTTPException(404,'Yedek bulunamadı.')
+    except (OSError,EOFError,ValueError,KeyError,TypeError): raise HTTPException(400,'Yedek dosyası bozuk veya eksik; geri yüklenemez.')

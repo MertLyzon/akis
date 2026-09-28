@@ -5,7 +5,7 @@ Türkçe, çok şirketli sosyal medya uygulaması. React arayüzü; FastAPI, SQL
 ## 0.3 ile gelenler: şirket kullanımı
 
 - **Şirket çalışma alanları**: Her şirketin hesapları, içerikleri, medyası ve uygulama ayarları birbirinden ayrı tutulur. Bir kişi birden fazla şirkete üye olabilir; kenar çubuğundan şirket değiştirilir.
-- **Kullanıcılar ve roller**: Şirket yöneticisi, onaylayan, editör, görüntüleyen. Yeni üyeye geçici parola verilir; ilk girişte kendi parolasını belirlemeden hiçbir işlem yapamaz.
+- **Kullanıcılar ve roller**: Şirket yöneticisi, onaylayan, editör, görüntüleyen. Yönetici kişiyi **davet bağlantısıyla** ekler (7 gün geçerli, tek kullanımlık, iptal edilebilir). Hesabı olan kişi kendi parolasıyla (ve 2FA koduyla) katılır, hesabı olmayan parolasını kendisi belirler; kimse onayı olmadan bir şirkete eklenmez ve davet cevabı e-postanın kayıtlı olup olmadığını göstermez. Yöneticinin sıfırladığı parola geçicidir; ilk girişte değiştirilmeden işlem yapılamaz.
 - **Paylaşım onayı**: Editörün hazırladığı içerik "Onay bekliyor" durumuna geçer; onaylayan veya yönetici onayladığında yayımlanır, reddedilirse not ile editöre döner. Şirket ayarlarından kapatılabilir.
 - **Takvim ve zamanlama**: İçerik ileri bir tarihe planlanır; saatler şirketin saat dilimine göre yorumlanır. Takvim ekranı aylık görünüm sunar; plan gönderim başlamadan iptal edilebilir.
 - **İşlem geçmişi**: Kim giriş yaptı, kim içeriği değiştirdi, kim onayladı, kim hangi hesabı bağladı. Anahtarlar bu kayıtlara yazılmaz.
@@ -166,5 +166,7 @@ python -m alembic -c backend/alembic.ini upgrade head
 ```
 
 Python komutlarını bağımlılıkların kurulu olduğu sanal ortamda çalıştırın. Alembic için `PYTHONPATH=backend` gerekir; başlatıcı bunu ayarlar.
+
+Doğrulama (0.3.1): Python 3.12 ve 3.14'te SQLite, Python 3.12'de PostgreSQL 16 üzerinde tüm test paketi geçti (şirketler arası yetki matrisi, CSRF/CORS, 2FA tekrar ve yarış, OAuth kenar durumları, dosya yükleme, uzak medya, ETag, kuyruk yarışları, yedek bütünlüğü, davet akışı). Ayrıntılı rapor: `docs/guvenlik-dogrulama-2026-09-28.md`. Testleri PostgreSQL'de çalıştırmak için geçici bir veritabanı adresini `AKIS_TEST_DATABASE_URL` olarak verin (tablolar her testten sonra silinir; gerçek veritabanı vermeyin).
 
 Doğrulama (0.3): 44 otomatik test geçti. Önceki 28 teste ek olarak şirket izolasyonu, roller, onay/red akışı, şirket saat dilimiyle zamanlama, işlem geçmişinde anahtar sızmaması, sistem panelinde anahtar görünmemesi, gönderim denemesi kaydı, medya kütüphanesi, iki aşamalı giriş, parola değişince eski oturumların kapanması, yedek alma/geri yükleme kontrolü ve Cloudinary yükleme/indirme akışı test edildi. Alembic geçişi eski 0.2 verisiyle denendi, modellerle şema farkı yok. Cloudinary bağlantısı gerçek hesapla doğrulandı. Gerçek sosyal medya hesaplarıyla canlı paylaşım yapılmadı; platform yanıtları testlerde taklit edildi.

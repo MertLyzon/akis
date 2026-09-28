@@ -47,3 +47,6 @@
 :root[data-theme=dark] .theme-switch{background:#20222e}
 :root[data-theme=dark] .theme-switch button[aria-pressed=true]{background:#2a2645;color:#c3baff}
 .login-theme{position:fixed;top:16px;right:16px;width:220px}
+/* Secondary text was darkened for AA contrast on the light theme; keep it light on dark surfaces. */
+:root[data-theme=dark] :is(.nav-label,.editor-toolbar,.editor-toolbar span,.field-help,.page-heading p,.search-field){color:#9ea3b5}
+:root[data-theme=dark] .eyebrow{color:#a99bf0}

@@ -31,7 +31,7 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .data-table th{text-align:left;font-weight:600;color:#8b91a3;font-size:12px;padding:11px 14px;background:#fafbfd;border-bottom:1px solid #eceef4;white-space:nowrap}
 .data-table td{padding:12px 14px;border-bottom:1px solid #f0f1f6;vertical-align:top;color:#4a5066}
 .data-table tr:last-child td{border-bottom:0}
-.data-table small{color:#9398aa;font-size:11px;margin-top:4px}
+.data-table small{color:#62677a;font-size:11px;margin-top:4px}
 .data-table select{padding:7px 9px;font-size:13px}
 .data-table code,.chip-row code,.attempts code{font-size:11px;background:#f3f4f8;border-radius:5px;padding:2px 6px;color:#6b5fb5}
 .row-actions{white-space:nowrap;text-align:right}
@@ -45,8 +45,8 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .secret-card code{display:inline-block;font-size:16px;letter-spacing:1px;background:#fff;border:1px solid #efdca0;border-radius:6px;padding:6px 10px;color:#3d3413;user-select:all}
 .audit-list{list-style:none;margin:10px 0 16px;padding:0;display:grid}
 .audit-list li{display:grid;grid-template-columns:120px 180px 1fr;gap:4px 14px;padding:10px 0;border-bottom:1px solid #f0f1f6;font-size:13px;color:#5d6378}
-.audit-list li small{grid-column:3;color:#9398aa;font-size:12px}
-.audit-time{color:#9ca1b3;font-size:12px}
+.audit-list li small{grid-column:3;color:#62677a;font-size:12px}
+.audit-time{color:#62677a;font-size:12px}
 .audit-list strong{font-weight:600;overflow:hidden;text-overflow:ellipsis}
 .filter-tabs{display:flex;flex-wrap:wrap;gap:6px}
 .filter-tabs button{border:1px solid #e4e7f0;background:#fff;border-radius:20px;padding:6px 13px;font-size:12px;font-weight:600;color:#7a8095}
@@ -55,12 +55,12 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .post-meta .schedule{display:inline-flex;align-items:center;gap:5px;color:#5945e8;font-weight:600}
 .post-channels{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .post-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:6px}
-.post-media{display:flex;align-items:center;gap:6px;font-size:12px;color:#8a90a2;margin-top:8px}
+.post-media{display:flex;align-items:center;gap:6px;font-size:12px;color:#62677a;margin-top:8px}
 .review-note{font-size:13px;margin-top:10px;padding:9px 12px;border-radius:8px;background:#f2f7ff;color:#40618f}
 .review-note.rejected{background:#fff3f0;color:#a4513e}
 .status-pending_approval{background:#fff5df!important;color:#94690b!important}
 .status-scheduled{background:#eeebfe!important;color:#5945e8!important}
-.status-completed{background:#eaf7f0!important;color:#278360!important}
+.status-completed{background:#eaf7f0!important;color:#1f6e50!important}
 .status-attention,.status-rejected{background:#fff1f1!important;color:#a45555!important}
 .status-processing{background:#eef4ff!important;color:#3d64b3!important}
 .warn-pill{background:#fff1f1;color:#a45555}
@@ -78,7 +78,7 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .calendar-nav{display:flex;gap:6px}
 .calendar-nav .secondary{padding:8px 11px}
 .calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
-.calendar-dow{font-size:11px;font-weight:700;letter-spacing:1px;color:#9ca1b3;padding:10px;border-bottom:1px solid #eceef4;text-align:center}
+.calendar-dow{font-size:11px;font-weight:700;letter-spacing:1px;color:#62677a;padding:10px;border-bottom:1px solid #eceef4;text-align:center}
 .calendar-cell{min-height:118px;border-right:1px solid #f0f1f6;border-bottom:1px solid #f0f1f6;padding:6px;display:flex;flex-direction:column;gap:4px;min-width:0}
 .calendar-cell:nth-child(7n){border-right:0}
 .calendar-cell.past{background:#fbfbfd}
@@ -96,7 +96,7 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .library-upload{padding:18px;margin-bottom:18px}
 .library-upload .dropzone{margin-top:0;min-height:120px}
 .library-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
-.search-field{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #dfe3ee;border-radius:9px;padding:0 12px;flex:1 1 220px;color:#9ca1b3;font-weight:400}
+.search-field{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #dfe3ee;border-radius:9px;padding:0 12px;flex:1 1 220px;color:#62677a;font-weight:400}
 .search-field input{border:0;padding:10px 0;box-shadow:none!important}
 .library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
 .library-card{background:#fff;border:1px solid #e4e7f0;border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
@@ -105,7 +105,7 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .cloud-badge{position:absolute;top:8px;right:8px;background:#ffffffe0;border-radius:6px;padding:3px 5px;color:#5945e8;display:grid}
 .library-info{padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}
 .library-info strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.library-info small{font-size:11px;color:#9398aa}
+.library-info small{font-size:11px;color:#62677a}
 .library-labels{display:flex;flex-wrap:wrap;gap:4px}
 .library-labels .pill{display:inline-flex;align-items:center;gap:3px;font-size:11px;padding:3px 7px}
 .library-actions{display:flex;align-items:center;gap:2px;margin-top:auto;padding-top:6px}
@@ -119,8 +119,8 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .picker .library-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));max-height:420px;overflow:auto}
 .health-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .health{display:flex;gap:10px;align-items:center;border:1px solid #eceef4;border-radius:10px;padding:14px;font-size:13px}
-.health small{color:#9398aa;font-size:12px}
-.health.ok svg{color:#278360}.health.bad svg{color:#c24d4d}.health.off svg{color:#b6bac8}
+.health small{color:#62677a;font-size:12px}
+.health.ok svg{color:#1f6e50}.health.bad svg{color:#c24d4d}.health.off svg{color:#b6bac8}
 .health.bad{background:#fff6f6;border-color:#f6d6d6}
 .totp-setup ol{padding-left:18px;display:grid;gap:10px;font-size:14px;color:#5d6378;line-height:1.7}
 .totp-secret{font-size:15px;letter-spacing:1px;background:#f3f2fb;padding:4px 8px;border-radius:6px;user-select:all;word-break:break-all}
@@ -145,3 +145,7 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .install-hint .primary{padding:7px 14px}
 .login-install{position:fixed;left:16px;right:16px;bottom:max(16px,env(safe-area-inset-bottom));max-width:520px;margin:0 auto}
 :root[data-theme=dark] .install-hint{background:#2a2645;border-color:#443c7a;color:#c3baff}
+.panel-head .search-field{flex:0 1 240px;margin-left:auto}
+.panel-head:has(.search-field){flex-wrap:wrap;gap:10px}
+.invite-mode{justify-self:start}
+.login-card h1 svg{vertical-align:-3px}
