@@ -10,12 +10,12 @@ name = "akis_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "=2.7.0", features = [] }
 
 [dependencies]
-# Same minor as @tauri-apps/api and @tauri-apps/plugin-opener in package.json; tauri build refuses a mismatch.
-tauri = { version = "~2.11", features = [] }
-tauri-plugin-opener = "~2.5"
+# Keep the Rust and JavaScript Tauri packages on the same release family.
+tauri = { version = "=2.12.0", features = [] }
+tauri-plugin-opener = "=2.6.0"
 
 [profile.release]
 codegen-units = 1

@@ -78,6 +78,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
       - run: npx tauri build ${{ matrix.args }}
+      - name: Save resolved Cargo lockfile
+        if: always() && matrix.name == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: akis-resolved-cargo-lock
+          path: src-tauri/Cargo.lock
       - uses: actions/upload-artifact@v4
         with:
           name: akis-${{ matrix.name }}
@@ -101,8 +107,10 @@ jobs:
         with: {node-version: 22, cache: npm}
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
       - uses: dtolnay/rust-toolchain@stable
         with: {targets: 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android'}
       - uses: swatinem/rust-cache@v2
