@@ -123,9 +123,9 @@ jobs:
       - name: Resolve pinned Rust dependencies
         run: cargo update --manifest-path src-tauri/Cargo.toml
       - name: Build APK
-        env:
-          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
         run: |
+          export NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          test -d "$NDK_HOME"
           npx tauri android init --ci
           # Debug-signed so it installs directly on a phone. For Google Play, see README (release signing).
           npx tauri android build --apk --debug --ci
