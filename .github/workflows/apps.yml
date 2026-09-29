@@ -78,7 +78,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
       - name: Verify pinned Rust dependencies
-        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps >/dev/null
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - run: npx tauri build ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
         with:
@@ -115,7 +115,7 @@ jobs:
         with: {workspaces: src-tauri}
       - run: npm ci
       - name: Verify pinned Rust dependencies
-        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps >/dev/null
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - name: Build APK
         run: |
           export NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
