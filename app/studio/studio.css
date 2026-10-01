@@ -15,6 +15,24 @@
 .panel.pad{padding:24px;margin-bottom:22px}
 .panel.pad>h2{display:flex;align-items:center;gap:9px;margin-bottom:14px}
 .panel.pad>h2 svg{color:#8e93a6}
+.preference-panel>div{max-width:420px}
+.preference-panel select{display:block;width:100%;margin-top:9px}
+.preference-panel label{display:flex;align-items:center;gap:7px;margin-top:18px}
+.preference-panel label:first-child{margin-top:0}
+.language-list{display:grid;grid-template-columns:1fr 1fr;margin-top:9px;border:1px solid #dfe3ee;border-radius:10px;overflow:hidden}
+.language-list button{display:flex;align-items:center;gap:10px;border:0;background:#fff;color:#6b7185;padding:12px 14px;text-align:left}
+.language-list button+button{border-left:1px solid #dfe3ee}
+.language-list button strong{display:grid;place-items:center;width:31px;height:25px;border-radius:6px;background:#f0f1f6;color:#5e6477;font-size:11px}
+.language-list button.active{background:#f3f0ff;color:#5945e8}
+.language-list button.active strong{background:#5945e8;color:#fff}
+.language-quick{display:flex;border:1px solid #dfe3ee;border-radius:7px;overflow:hidden}
+.language-quick button{border:0;background:transparent;color:#8b91a3;padding:4px 6px;font-size:10px;font-weight:700}
+.language-quick button[aria-pressed=true]{background:#5945e8;color:#fff}
+:root[data-theme=dark] .language-list,:root[data-theme=dark] .language-list button+button,:root[data-theme=dark] .language-quick{border-color:#343748}
+:root[data-theme=dark] .language-list button{background:#1b1d27;color:#b3b8cc}
+:root[data-theme=dark] .language-list button strong{background:#262838;color:#b3b8cc}
+:root[data-theme=dark] .language-list button.active{background:#2a2645;color:#c3baff}
+:root[data-theme=dark] .language-list button.active strong,:root[data-theme=dark] .language-quick button[aria-pressed=true]{background:#6f5cf5;color:#fff}
 .sub{font-size:13px;margin:18px 0 10px;color:#5d6378}
 select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px solid #dfe3ee;border-radius:9px;padding:10px 12px}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;align-items:end}
@@ -74,6 +92,10 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .schedule-field .field-title{display:flex;align-items:center;gap:7px;margin-bottom:10px}
 .schedule-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
 .schedule-row input{width:auto}
+.schedule-picker,.schedule-clock{display:flex;align-items:center;gap:7px}
+.schedule-picker input{min-width:145px}
+.schedule-clock select{min-width:68px;padding:11px 10px;text-align:center;font-variant-numeric:tabular-nums}
+.schedule-clock b{color:#7d8497;font-size:17px}
 .calendar .panel-head{flex-wrap:wrap;gap:10px}
 .calendar-nav{display:flex;gap:6px}
 .calendar-nav .secondary{padding:8px 11px}
@@ -149,3 +171,23 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .panel-head:has(.search-field){flex-wrap:wrap;gap:10px}
 .invite-mode{justify-self:start}
 .login-card h1 svg{vertical-align:-3px}
+.topbar-meta{display:flex;align-items:center;gap:14px}
+.sync-status{display:inline-flex;align-items:center;gap:6px;color:#2f7a58;font-weight:600;white-space:nowrap}
+.sync-status.sync-error{color:#b05757}
+button:disabled{cursor:not-allowed}
+:root[data-theme=dark] .sync-status{color:#7fd6a5}
+:root[data-theme=dark] .sync-status.sync-error{color:#f0a3a8}
+@media(max-width:600px){
+  .filter-tabs{flex-wrap:nowrap;overflow-x:auto;padding:2px 1px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .filter-tabs::-webkit-scrollbar{display:none}
+  .filter-tabs button{flex:0 0 auto;min-height:40px}
+  .post-actions .primary,.post-actions .secondary{min-height:42px}
+  .library-actions .icon-button,.calendar-nav .secondary{min-width:40px;min-height:40px}
+  .topbar-meta{display:flex;margin-left:auto}
+  .topbar-meta>span:last-child{display:none}
+  .schedule-picker{width:100%;flex-wrap:wrap}
+  .schedule-picker input{flex:1 1 150px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+}
