@@ -1,6 +1,6 @@
 # Builds the Akış apps for every platform on GitHub's machines.
-# Run it from the Actions tab ("Run workflow"), or push a tag like v0.3.0.
-# Download the results from the run's "Artifacts" section.
+# Run it from the Actions tab ("Run workflow"), or push a tag like v0.4.0-dev.1.
+# Tagged builds are also published as a GitHub pre-release with installers attached.
 name: Uygulamalar
 
 on:
@@ -179,3 +179,40 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose down --volumes
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [desktop, android, docker]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Prepare release notes
+        run: |
+          cat > release-notes.md <<'EOF'
+          Bu geliştirme ön sürümü kullanıcı deneyimi ve arayüz iyileştirmelerini içerir.
+
+          - Dil ve saat tercihleri yalnızca Ayarlar altında toplandı.
+          - `Cmd/Ctrl + K` ile hızlı gezinme menüsü eklendi.
+          - Taslakların kaydedilme durumu görünür hale getirildi.
+          - Dil seçici ve tema kontrollerinin yerleşimi iyileştirildi.
+          - PWA uygulama kabuğu önbelleği yeni sürüm için yenilendi.
+
+          Not: Masaüstü paketleri yerel Akış sunucusuna bağlanan istemcilerdir. Android paketi debug imzalı test paketidir; Play Store dağıtımı için release imzası gerekir.
+          EOF
+      - name: Publish GitHub pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mapfile -d '' files < <(find release-assets -type f -print0)
+          test "${#files[@]}" -gt 0
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+            --prerelease \
+            --verify-tag \
+            --title "Akış ${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md

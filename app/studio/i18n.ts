@@ -41,6 +41,17 @@ const english:Record<string,string>={
   ,'Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.':'The server cannot be reached. Check your internet connection.','Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.':'The server cannot be reached. Try again shortly.','İşlem tamamlanamadı.':'The operation could not be completed.','Geçerli bir sunucu adresi gir.':'Enter a valid server address.','Uzak sunucu adresi güvenli bir https:// adresi olmalı.':'The remote server must use a secure https:// address.','Sunucuya ulaşılamadı. Adresi ve internet bağlantını kontrol et.':'The server could not be reached. Check the address and your internet connection.','Bu adreste bir Akış sunucusu bulunamadı.':'No Akış server was found at this address.'
 };
 
+Object.assign(english,{
+  "Akış'ta ara":'Search Akış',
+  'Bir ekrana git…':'Go to a screen…',
+  'Ekranlar':'Screens',
+  'Aramana uyan ekran yok.':'No matching screen.',
+  'Hazırla · planla · yayınla':'Create · schedule · publish',
+  'Yeni paylaşım':'New post',
+  'Taslak bu cihazda saklandı':'Draft saved on this device',
+  'Taslak kaydediliyor…':'Saving draft…'
+});
+
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}
 export function saveLanguage(language:Language){try{localStorage.setItem('akis-language',language)}catch{}document.documentElement.lang=language}
 export function applyLanguage(){document.documentElement.lang=readLanguage()}
