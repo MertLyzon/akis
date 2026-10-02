@@ -12,7 +12,14 @@ from . import models  # noqa: F401 — registers every table on Base.metadata
 FORMAT=1
 
 def backup_dir():
-    path=Path(settings.backup_dir);path.mkdir(parents=True,exist_ok=True);return path
+    path=Path(settings.backup_dir);path.mkdir(parents=True,exist_ok=True)
+    # Backups contain password hashes and encrypted credentials. Keep them private
+    # even when the host's default umask would create world-readable files.
+    try:
+        path.chmod(0o700)
+        for existing in path.glob('akis-*.json.gz'): existing.chmod(0o600)
+    except OSError: pass  # Filesystems such as some Windows mounts do not expose POSIX modes.
+    return path
 
 def create_backup(target_engine=None):
     source=target_engine or engine
@@ -26,6 +33,8 @@ def create_backup(target_engine=None):
     path=backup_dir()/f'akis-{stamp}.json.gz'
     payload={'format':FORMAT,'created_at':int(time.time()),'alembic_revision':revision,'counts':{k:len(v) for k,v in tables.items()},'tables':tables}
     with gzip.open(path,'wt',encoding='utf-8') as f: json.dump(payload,f,default=str)
+    try: path.chmod(0o600)
+    except OSError: pass
     prune()
     return {'file':path.name,'size':path.stat().st_size,'counts':payload['counts']}
 

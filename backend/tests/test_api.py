@@ -6,13 +6,33 @@ from akis.models import Credential,Content,ContentPlatform
 from akis.security import decrypt
 from akis.media import process_asset
 
-def test_auth_and_csrf(client):
+def test_auth_and_csrf(client,monkeypatch):
+    headers=client.get('/api/health').headers
+    assert headers['x-frame-options']=='DENY'
+    assert "frame-ancestors 'none'" in headers['content-security-policy']
+    assert headers['permissions-policy']=='camera=(), microphone=(), geolocation=()'
+    from akis.config import settings
+    monkeypatch.setattr(settings,'app_origin','https://akis.example')
+    client.cookies.clear()
+    cookie=client.get('/api/session').headers.get('set-cookie','').lower()
+    assert 'httponly' in cookie and 'samesite=lax' in cookie and 'secure' in cookie
+    monkeypatch.setattr(settings,'app_origin','http://localhost:5173')
     client.cookies.clear()
     assert client.get('/api/state').status_code==401
     assert client.get('/api/session',headers={'Sec-Fetch-Site':'cross-site'}).status_code==403
     client.get('/api/session')
     r=client.post('/api/connections',json={'platform':'x','token':'fake'},headers={'Origin':'https://attacker.example'})
     assert r.status_code==403
+
+def test_login_has_account_wide_distributed_bruteforce_limit():
+    from fastapi.testclient import TestClient
+    from akis.main import app
+    statuses=[]
+    for i in range(21):
+        with TestClient(app,base_url='http://localhost:5173',headers={'Origin':'http://localhost:5173'},client=(f'10.0.0.{i+1}',50000)) as c:
+            statuses.append(c.post('/api/login',json={'email':'admin@akis.local','password':'definitely-wrong'}).status_code)
+    assert statuses[:20]==[401]*20
+    assert statuses[20]==429
 
 def test_secret_storage_and_expiry(client):
     r=client.post('/api/connections',json={'platform':'x','token':'fake-access-secret','refresh_token':'fake-refresh-secret','expires_at':1900000000})

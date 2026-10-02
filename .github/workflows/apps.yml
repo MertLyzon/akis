@@ -1,27 +1,60 @@
 # Builds the Akış apps for every platform on GitHub's machines.
-# Run it from the Actions tab ("Run workflow"), or push a tag like v0.3.0.
-# Download the results from the run's "Artifacts" section.
+# Run it from the Actions tab ("Run workflow"), or push a tag like v0.4.0-dev.1.
+# Tagged builds are also published as a GitHub pre-release with installers attached.
 name: Uygulamalar
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     tags: ['v*']
+
+concurrency:
+  group: apps-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: akis_tests
+          POSTGRES_USER: akis
+          POSTGRES_PASSWORD: test-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U akis -d akis_tests"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with: {python-version: '3.12'}
       - run: pip install -r backend/requirements.txt
-      - run: mkdir -p work && python -m pytest -q
+      - name: SQLite tests
+        run: mkdir -p work && python -m pytest -q
+      - name: PostgreSQL tests
+        env:
+          AKIS_TEST_DATABASE_URL: postgresql+psycopg://akis:test-only-password@127.0.0.1:5432/akis_tests
+        run: python -m pytest -q
+      - name: PostgreSQL migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://akis:test-only-password@127.0.0.1:5432/akis_tests
+        run: |
+          python -m alembic -c backend/alembic.ini upgrade head
+          python -m alembic -c backend/alembic.ini check
+          python -m alembic -c backend/alembic.ini downgrade -1
+          python -m alembic -c backend/alembic.ini upgrade head
       - uses: actions/setup-node@v5
         with: {node-version: 22, cache: npm}
       - run: npm ci && npm run build
 
   desktop:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     needs: test
     strategy:
       fail-fast: false
@@ -44,6 +77,8 @@ jobs:
         if: matrix.name == 'linux'
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - run: npm ci
+      - name: Verify pinned Rust dependencies
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - run: npx tauri build ${{ matrix.args }}
       - uses: actions/upload-artifact@v4
         with:
@@ -57,6 +92,7 @@ jobs:
             src-tauri/target/**/release/bundle/appimage/*.AppImage
 
   android:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
     needs: test
     runs-on: ubuntu-22.04
     env:
@@ -67,17 +103,23 @@ jobs:
         with: {node-version: 22, cache: npm}
       - uses: actions/setup-java@v5
         with: {distribution: temurin, java-version: '17'}
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager_path=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)
+          test -x "$sdkmanager_path"
+          yes | "$sdkmanager_path" --licenses >/dev/null || true
+          "$sdkmanager_path" "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
       - uses: dtolnay/rust-toolchain@stable
         with: {targets: 'aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android'}
       - uses: swatinem/rust-cache@v2
         with: {workspaces: src-tauri}
       - run: npm ci
+      - name: Verify pinned Rust dependencies
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - name: Build APK
-        env:
-          NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
         run: |
+          export NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          test -d "$NDK_HOME"
           npx tauri android init --ci
           # Debug-signed so it installs directly on a phone. For Google Play, see README (release signing).
           npx tauri android build --apk --debug --ci
@@ -85,3 +127,121 @@ jobs:
         with:
           name: akis-android
           path: src-tauri/gen/android/app/build/outputs/apk/**/*.apk
+
+  docker:
+    needs: test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.12'}
+      - name: Create disposable Docker secrets
+        run: python scripts/bootstrap.py
+      - name: Build and start the complete stack
+        run: docker compose up -d --build
+      - name: Wait for nginx and API
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: Verify nginx headers, compression and trusted proxy boundary
+        run: |
+          headers=$(mktemp)
+          curl --silent --show-error --dump-header "$headers" --output /dev/null http://127.0.0.1:8080/
+          grep --ignore-case '^Content-Security-Policy:' "$headers"
+          grep --ignore-case '^X-Frame-Options: DENY' "$headers"
+          grep --ignore-case '^X-Content-Type-Options: nosniff' "$headers"
+          grep --ignore-case '^Referrer-Policy: no-referrer' "$headers"
+          grep --ignore-case '^Permissions-Policy:' "$headers"
+
+          asset=$(curl --silent http://127.0.0.1:8080/ | grep -oE '/assets/[^" ]+\.js' | head -n 1)
+          test -n "$asset"
+          curl --silent --compressed --dump-header "$headers" --output /dev/null "http://127.0.0.1:8080$asset"
+          grep --ignore-case '^Content-Encoding: gzip' "$headers"
+
+          for attempt in $(seq 1 6); do
+            status=$(curl --silent --output /dev/null --write-out '%{http_code}' \
+              --request POST http://127.0.0.1:8080/api/login \
+              --header 'Content-Type: application/json' \
+              --header 'Origin: http://localhost:8080' \
+              --header "X-Forwarded-For: 203.0.113.$attempt" \
+              --data '{"email":"admin@akis.local","password":"wrong-password"}')
+          done
+          test "$status" = '429'
+      - name: Show container logs after a failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [desktop, android, docker]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+      - name: Prepare release notes
+        run: |
+          cat > release-notes.md <<'EOF'
+          Bu geliştirme ön sürümü kullanıcı deneyimi ve arayüz iyileştirmelerini içerir.
+
+          - Dil ve saat tercihleri yalnızca Ayarlar altında toplandı.
+          - `Cmd/Ctrl + K` ile hızlı gezinme menüsü eklendi.
+          - Taslakların kaydedilme durumu görünür hale getirildi.
+          - Dil seçici ve tema kontrollerinin yerleşimi iyileştirildi.
+          - PWA uygulama kabuğu önbelleği yeni sürüm için yenilendi.
+
+          Not: Masaüstü paketleri yerel Akış sunucusuna bağlanan istemcilerdir. Android paketi debug imzalı test paketidir; Play Store dağıtımı için release imzası gerekir.
+          EOF
+      - name: Publish GitHub pre-release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          title="Akış ${GITHUB_REF_NAME#v}"
+          payload=$(jq -n \
+            --arg tag "$GITHUB_REF_NAME" \
+            --arg title "$title" \
+            --arg body "$(cat release-notes.md)" \
+            '{tag_name: $tag, name: $title, body: $body, draft: false, prerelease: true}')
+
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer $GITHUB_TOKEN" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            "$api/releases" \
+            --data "$payload" > release.json
+
+          upload_url=$(jq -r '.upload_url' release.json)
+          upload_url=${upload_url%%\{*}
+          test -n "$upload_url"
+
+          asset_count=0
+          while IFS= read -r -d '' file; do
+            name=$(basename "$file")
+            encoded_name=$(jq -nr --arg value "$name" '$value | @uri')
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              --header "Authorization: Bearer $GITHUB_TOKEN" \
+              --header "Content-Type: application/octet-stream" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              --data-binary "@$file" \
+              "$upload_url?name=$encoded_name" >/dev/null
+            asset_count=$((asset_count + 1))
+          done < <(find release-assets -type f -print0)
+
+          test "$asset_count" -gt 0
+          echo "Published $asset_count release assets."

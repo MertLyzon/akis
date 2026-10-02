@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     credential_key: str = ''
     app_origin: str = 'http://localhost:5173'
     public_base_url: str = ''
+    # Named Cloudflare Tunnel used by scripts/public_dev.py (development only).
+    cloudflare_tunnel: str = 'akis-dev'
+    public_tunnel_provider: str = 'cloudflare'
     admin_password_hash: str = ''
     local_mode: bool = True
     media_root: str = str(ROOT / 'data' / 'media')

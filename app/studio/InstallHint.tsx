@@ -2,6 +2,7 @@
 import {useEffect,useState} from 'react';
 import {Download,Share,X} from 'lucide-react';
 import {isApp} from './api';
+import {t} from './i18n';
 
 // Chrome/Edge/Android fire this before offering install; we keep it to show our own button.
 let deferred:any=null;
@@ -25,8 +26,8 @@ export default function InstallHint(){
   if(!ios&&!canPrompt)return null;
   function close(){setHidden(true);try{localStorage.setItem('akis-install-hint','hidden')}catch{}}
   return <div className="install-hint" role="note"><Download size={18}/>
-    {ios?<span><strong>Akış’ı uygulama olarak kullan.</strong> Safari’de <Share size={14} aria-label="Paylaş"/> <b>Paylaş</b> → <b>Ana Ekrana Ekle</b>’ye dokun.</span>
-      :<span><strong>Akış’ı uygulama olarak yükle.</strong> Ana ekranından veya masaüstünden tek dokunuşla aç.</span>}
-    {!ios&&<button className="primary" onClick={async()=>{deferred?.prompt();const r=await deferred?.userChoice;deferred=null;setCanPrompt(false);if(r?.outcome==='accepted')close()}}>Yükle</button>}
-    <button className="icon-button" aria-label="Kapat" title="Kapat" onClick={close}><X size={15}/></button></div>;
+    {ios?<span><strong>{t('Akış’ı uygulama olarak kullan.')}</strong> {t('Safari’de')} <Share size={14} aria-label={t('Paylaş')}/> <b>{t('Paylaş')}</b> → <b>{t('Ana Ekrana Ekle')}</b> {t('seçeneğine dokun.')}</span>
+      :<span><strong>{t('Akış’ı uygulama olarak yükle.')}</strong> {t('Ana ekranından veya masaüstünden tek dokunuşla aç.')}</span>}
+    {!ios&&<button className="primary" onClick={async()=>{deferred?.prompt();const r=await deferred?.userChoice;deferred=null;setCanPrompt(false);if(r?.outcome==='accepted')close()}}>{t('Yükle')}</button>}
+    <button className="icon-button" aria-label={t('Kapat')} title={t('Kapat')} onClick={close}><X size={15}/></button></div>;
 }
