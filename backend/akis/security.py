@@ -2,20 +2,27 @@ import base64, hashlib, hmac, secrets, time
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from .config import settings
 
+_keys={}
 def raw_key():
+    # Decoded once per configured value; state serialization signs every media URL.
+    cached=_keys.get(settings.credential_key)
+    if cached: return cached[0]
     key = base64.b64decode(settings.credential_key)
     if len(key) != 32: raise RuntimeError('CREDENTIAL_KEY must contain 32 random bytes as base64')
+    _keys.clear();_keys[settings.credential_key]=(key,AESGCM(key))
     return key
+def _cipher():
+    raw_key();return _keys[settings.credential_key][1]
 
 def encrypt(value):
     if not value: return None
     iv=secrets.token_bytes(12)
-    return base64.b64encode(iv).decode()+'.'+base64.b64encode(AESGCM(raw_key()).encrypt(iv,value.encode(),None)).decode()
+    return base64.b64encode(iv).decode()+'.'+base64.b64encode(_cipher().encrypt(iv,value.encode(),None)).decode()
 
 def decrypt(value):
     if not value: return ''
     iv,data=value.split('.')
-    return AESGCM(raw_key()).decrypt(base64.b64decode(iv),base64.b64decode(data),None).decode()
+    return _cipher().decrypt(base64.b64decode(iv),base64.b64decode(data),None).decode()
 
 def sign(value): return hmac.new(raw_key(),value.encode(),hashlib.sha256).hexdigest()
 def make_session():
@@ -50,8 +57,11 @@ def read_session(value):
     except (ValueError,AttributeError): pass
     return None
 
+# Hashed when the account does not exist, so response time does not reveal which e-mails are registered.
+_DUMMY_HASH=password_hash(secrets.token_urlsafe(16))
 def verify_password(password,stored):
-    if not stored or ':' not in stored: return False
+    if not stored or ':' not in stored:
+        hmac.compare_digest(password_hash(password,_DUMMY_HASH.split(':')[0]),_DUMMY_HASH);return False
     return hmac.compare_digest(password_hash(password,stored.split(':')[0]),stored)
 
 # RFC 6238 TOTP (30s, 6 digits, SHA1) — compatible with Google Authenticator, 1Password, Authy.
@@ -61,8 +71,13 @@ def totp_code(secret,counter):
     digest=hmac.new(key,counter.to_bytes(8,'big'),hashlib.sha1).digest()
     offset=digest[-1]&15
     return str((int.from_bytes(digest[offset:offset+4],'big')&0x7fffffff)%1000000).zfill(6)
-def totp_verify(secret,code,at=None):
-    code=''.join(ch for ch in str(code or '') if ch.isdigit())
-    if len(code)!=6 or not secret: return False
+def totp_match(secret,code,at=None,after=None):
+    """Return the time step the code belongs to, or None. Steps at or before `after` are refused (replay)."""
+    code=str(code or '').replace(' ','').replace('-','')
+    if len(code)!=6 or not code.isascii() or not code.isdigit() or not secret: return None
     counter=int((at or time.time())//30)
-    return any(hmac.compare_digest(totp_code(secret,counter+d),code) for d in (-1,0,1))
+    for step in (counter-1,counter,counter+1):
+        if after is not None and step<=after: continue
+        if hmac.compare_digest(totp_code(secret,step),code): return step
+    return None
+def totp_verify(secret,code,at=None): return totp_match(secret,code,at) is not None

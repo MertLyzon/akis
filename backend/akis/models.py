@@ -27,6 +27,8 @@ class User(Base):
     is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     totp_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Last accepted TOTP time step; a code cannot be used twice.
+    totp_last_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Bumped on password/2FA change so existing sessions stop working.
     session_version: Mapped[int] = mapped_column(Integer, default=1)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -45,7 +47,7 @@ class Membership(Base):
 class AuditLog(Base):
     __tablename__ = 'audit_log'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
-    company_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    company_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     user_email: Mapped[str] = mapped_column(String(254), default='')
     action: Mapped[str] = mapped_column(String(60))
@@ -53,11 +55,12 @@ class AuditLog(Base):
     target_id: Mapped[str] = mapped_column(String(100), default='')
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[int] = mapped_column(Integer, default=now, index=True)
+    __table_args__ = (Index('ix_audit_log_company_created','company_id','created_at'),)
 
 class Content(Base):
     __tablename__ = 'contents'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
-    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[str] = mapped_column(String(100), index=True)
     body_text: Mapped[str] = mapped_column(Text, default='')
     created_at: Mapped[int] = mapped_column(Integer, default=now)
@@ -73,11 +76,12 @@ class Content(Base):
     approved_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     review_note: Mapped[str] = mapped_column(Text, default='')
     updated_at: Mapped[int] = mapped_column(Integer, default=now)
+    __table_args__ = (Index('ix_contents_company_created','company_id','created_at'),Index('ix_contents_asset_id','asset_id'))
 
 class MediaAsset(Base):
     __tablename__ = 'media_assets'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
-    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    company_id: Mapped[str] = mapped_column(String(64))
     uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     content_id: Mapped[str | None] = mapped_column(ForeignKey('contents.id'), nullable=True)
     filename: Mapped[str] = mapped_column(String(255))
@@ -101,7 +105,7 @@ class MediaAsset(Base):
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[int] = mapped_column(Integer, default=now)
     updated_at: Mapped[int] = mapped_column(Integer, default=now)
-    __table_args__ = (UniqueConstraint('source_asset_id', 'variant', name='uq_asset_variant'),)
+    __table_args__ = (UniqueConstraint('source_asset_id', 'variant', name='uq_asset_variant'),Index('ix_media_assets_company_created','company_id','created_at'),Index('ix_media_assets_status','status'))
 
 class ContentPlatform(Base):
     __tablename__ = 'content_platforms'
@@ -124,7 +128,7 @@ class ContentPlatform(Base):
 class DeliveryAttempt(Base):
     __tablename__ = 'delivery_attempts'
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
-    delivery_id: Mapped[str] = mapped_column(ForeignKey('content_platforms.id'), index=True)
+    delivery_id: Mapped[str] = mapped_column(ForeignKey('content_platforms.id'))
     started_at: Mapped[int] = mapped_column(Integer, default=now)
     finished_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Step the worker reached, e.g. media_upload / publish / waiting. Never contains tokens.
@@ -132,6 +136,7 @@ class DeliveryAttempt(Base):
     outcome: Mapped[str] = mapped_column(String(30), default='running')
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (Index('ix_delivery_attempts_delivery_started','delivery_id','started_at'),)
 
 class Credential(Base):
     __tablename__ = 'credentials'
@@ -168,7 +173,7 @@ class OAuthState(Base):
     session_hash: Mapped[str] = mapped_column(String(64))
     platform: Mapped[str] = mapped_column(String(20))
     verifier: Mapped[str] = mapped_column(Text)
-    expires_at: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[int] = mapped_column(Integer, index=True)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class Broadcast(Base):
@@ -179,6 +184,23 @@ class Broadcast(Base):
     content_id: Mapped[str] = mapped_column(ForeignKey('contents.id'), unique=True)
     status: Mapped[str] = mapped_column(String(30), default='pending')
     sent_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+class Invitation(Base):
+    """One-time link that lets a person join a company. Only the token's hash is stored; nothing here
+    reveals whether the e-mail already has an account, and nobody becomes a member until they accept."""
+    __tablename__ = 'invitations'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=uid)
+    company_id: Mapped[str] = mapped_column(String(64), index=True)
+    email: Mapped[str] = mapped_column(String(254))
+    name: Mapped[str] = mapped_column(String(120), default='')
+    role: Mapped[str] = mapped_column(String(20), default='editor')
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    invited_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, default=now)
+    expires_at: Mapped[int] = mapped_column(Integer)
+    accepted_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    accepted_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
 class AppSetting(Base):
     __tablename__ = 'app_settings'

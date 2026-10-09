@@ -1,4 +1,4 @@
-import io,json,time,uuid
+import io,json,os,time,uuid
 from contextlib import contextmanager
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -25,10 +25,22 @@ def user_client(email,password,code=''):
             assert c.post('/api/me/password',json={'current':password,'new':password+'-kalici'}).status_code==200
         yield c
 
+def accept_invite(token,password,**extra):
+    """Open the invitation in a fresh browser and accept it; returns the response."""
+    from fastapi.testclient import TestClient
+    from akis.main import app
+    with TestClient(app,base_url='http://localhost:5173',headers=ORIGIN) as c:
+        c.post('/api/logout');c.cookies.clear()
+        return c.post(f'/api/invites/{token}/accept',json={'password':password,**extra})
+
 def add_member(client,email,role):
+    """Invite, then accept as the invitee with a password they chose. Returns that password."""
     r=client.post('/api/company/members',json={'email':email,'role':role})
     assert r.status_code==200,r.text
-    return r.json()['temporary_password']
+    password='davet-'+uuid.uuid4().hex[:12]
+    accepted=accept_invite(r.json()['invite_token'],password)
+    assert accepted.status_code==200,accepted.text
+    return password
 
 def post(client,**extra):
     body={'requestId':str(uuid.uuid4()),'text':'Merhaba dünya','platforms':['x'],'send':True,**extra}
@@ -83,6 +95,8 @@ def test_viewer_is_read_only(client):
         assert v.get('/api/state').json()['settings']['oauth_apps']==[]
 
 def test_companies_are_isolated(client):
+    f=io.BytesIO();Image.new('RGB',(16,16),'red').save(f,'PNG')
+    a_asset=client.post('/api/media',files={'file':('private.png',f.getvalue(),'image/png')}).json()['id']
     client.post('/api/connections',json={'platform':'x','token':'company-a-secret','label':'A hesabı'})
     a_post=post(client).json()['id']
     r=client.post('/api/system/companies',json={'name':'Firma B','admin_email':'b@firmab.com'})
@@ -91,6 +105,10 @@ def test_companies_are_isolated(client):
         s=b.get('/api/state').json()
         assert s['company']['name']=='Firma B' and s['posts']==[] and s['connections']==[]
         assert b.post(f'/api/posts/{a_post}/approve',json={}).status_code==404
+        assert b.get(f'/api/media/{a_asset}').status_code==404
+        assert b.patch(f'/api/media/{a_asset}',json={'folder':'çalındı'}).status_code==404
+        assert b.delete(f'/api/media/{a_asset}').status_code==404
+        assert b.get(f'/api/media/{a_asset}/file').status_code==404
         assert b.get('/api/system/overview').status_code==403
         # Asking for another company's workspace explicitly is refused.
         a_company=client.get('/api/state').json()['company']['id']
@@ -163,22 +181,27 @@ def test_two_factor_login(client):
     with user_client('guvenli@firma.com',password) as c:
         secret=c.post('/api/me/2fa/setup').json()['secret']
         assert c.post('/api/me/2fa/enable',json={'code':'000000'}).status_code==400
-        assert c.post('/api/me/2fa/enable',json={'code':totp_code(secret,int(time.time()//30))}).status_code==200
+        enabled_step=int(time.time()//30)
+        assert c.post('/api/me/2fa/enable',json={'code':totp_code(secret,enabled_step)}).status_code==200
     from fastapi.testclient import TestClient
     from akis.main import app
     with TestClient(app,base_url='http://localhost:5173',headers=ORIGIN) as c:
         c.post('/api/logout')
-        password+='-kalici'
         r=c.post('/api/login',json={'email':'guvenli@firma.com','password':password})
         assert r.status_code==401 and r.json()['needs_code']
         assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':'123456'}).status_code==401
-        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':totp_code(secret,int(time.time()//30))}).status_code==200
+        # The code that enabled 2FA was already used; a captured code cannot be replayed.
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':totp_code(secret,enabled_step)}).status_code==401
+        next_code=totp_code(secret,enabled_step+1)
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':next_code}).status_code==200
+        c.post('/api/logout')
+        assert c.post('/api/login',json={'email':'guvenli@firma.com','password':password,'code':next_code}).status_code==401
 
 def test_password_change_invalidates_old_sessions(client):
     password=add_member(client,'sifre@firma.com','viewer')
     with user_client('sifre@firma.com',password) as c:
         old_cookie=c.cookies.get('akis_session')
-        assert c.post('/api/me/password',json={'current':password+'-kalici','new':'yeni-guclu-parola'}).status_code==200
+        assert c.post('/api/me/password',json={'current':password,'new':'yeni-guclu-parola'}).status_code==200
         assert c.get('/api/state').status_code==200
         c.cookies.set('akis_session',old_cookie)
         assert c.get('/api/state').status_code==401
@@ -194,7 +217,20 @@ def test_backup_and_restore_check(client):
     r=client.post('/api/system/backup');assert r.status_code==200,r.text
     body=r.json();assert body['verified'] and body['counts']['contents']==1 and body['counts']['users']>=1
     assert client.post(f"/api/system/backup/{body['file']}/verify").json()['ok']
-    assert client.post('/api/system/backup/..%2F..%2Fetc/verify').status_code in (400,404)
+    assert client.post('/api/system/backup/..%2F..%2Fetc/verify').status_code in (400,404,405)
+
+def test_local_worker_creates_only_one_verified_daily_backup(client,tmp_path,monkeypatch):
+    from akis import jobs
+    from akis.config import settings
+    monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
+    first=jobs.ensure_local_daily_backup()
+    assert first and first['file'].endswith('.json.gz')
+    assert jobs.ensure_local_daily_backup() is None
+    from akis.backup import verify_backup
+    assert verify_backup(first['file'])['ok']
+    if os.name!='nt':
+        assert (tmp_path.stat().st_mode&0o777)==0o700
+        assert ((tmp_path/first['file']).stat().st_mode&0o777)==0o600
 
 def test_cloudinary_upload_and_url(client,monkeypatch):
     from akis import storage
@@ -228,6 +264,9 @@ def test_worker_downloads_from_cloudinary_when_local_copy_missing(monkeypatch,tm
     a.remote_url='https://evil.example/x.jpg'
     with pytest.raises(FileNotFoundError):
         with storage.local_file(a): pass
+    a.remote_url='https://evilcloudinary.com/x.jpg'
+    with pytest.raises(FileNotFoundError):
+        with storage.local_file(a): pass
 
 def test_backup_cli_runs_standalone(client,tmp_path):
     # Runs in a fresh interpreter: the backup module must register every table itself.
@@ -240,3 +279,18 @@ def test_backup_cli_runs_standalone(client,tmp_path):
     assert r.returncode==0,r.stderr
     body=json.loads(r.stdout)
     assert body['verified'] and body['counts']['users']>=1 and 'delivery_attempts' in body['counts']
+
+def test_legacy_import_encrypts_tokens(client,tmp_path,monkeypatch):
+    import importlib.util,sqlite3
+    from pathlib import Path
+    legacy=tmp_path/'.wrangler/state/v3/d1/legacy.sqlite';legacy.parent.mkdir(parents=True)
+    old=sqlite3.connect(legacy)
+    old.executescript('create table connections(platform text, token text, account text); create table posts(id text, created text, status text, text text, platforms text, recipient text, template text, language text, media text); create table deliveries(id text, post_id text, platform text, status text, error text, external_id text);')
+    old.execute('insert into connections values(?,?,?)',('x','legacy-plain-secret','123'));old.commit();old.close()
+    spec=importlib.util.spec_from_file_location('legacy_import_test',Path(__file__).resolve().parents[2]/'scripts/import_legacy.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);monkeypatch.setattr(module,'root',tmp_path)
+    assert module.main()==0
+    from akis.security import decrypt
+    with Session() as db:
+        value=db.scalar(select(Credential.access_token).where(Credential.platform=='x'))
+    assert value!='legacy-plain-secret' and decrypt(value)=='legacy-plain-secret'

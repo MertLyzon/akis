@@ -16,6 +16,8 @@ x-backend: &backend
     QUEUE_MODE: celery
     MEDIA_ROOT: /app/data/media
     BACKUP_DIR: /app/backups
+    # Only nginx (fixed address below) may tell the API the client's real IP.
+    FORWARDED_ALLOW_IPS: 172.29.53.10
   volumes:
     - media:/app/data/media
     - backups:/app/backups
@@ -72,9 +74,17 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
     ports: ['127.0.0.1:8080:80']
+    networks:
+      default:
+        ipv4_address: 172.29.53.10
     depends_on:
       api: {condition: service_healthy}
     restart: unless-stopped
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.29.53.0/24
 volumes:
   postgres:
   redis:

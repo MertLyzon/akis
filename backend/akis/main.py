@@ -1,22 +1,24 @@
-import hashlib,hmac,json,math,re,threading
+import hashlib,hmac,json,math,re,threading,time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlsplit,quote
+from urllib.parse import urlsplit,quote,unquote
 from uuid import UUID,uuid4
 from zoneinfo import ZoneInfo
-from fastapi import FastAPI,Request,HTTPException,Depends,UploadFile,File,BackgroundTasks
+from fastapi import FastAPI,Request,HTTPException,Depends,UploadFile,File,BackgroundTasks,Path as Path_
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse,FileResponse,RedirectResponse
+from fastapi.responses import JSONResponse,FileResponse,RedirectResponse,Response
+from starlette.middleware.gzip import GZipMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel,Field
 from typing import Literal
-from sqlalchemy import select,update,delete,func
+from sqlalchemy import select,update,delete,func,or_
 from sqlalchemy.exc import IntegrityError
 from .config import settings
 from .db import Session
-from .models import Content,ContentPlatform,Credential,MediaAsset,OAuthApp,AppSetting,Broadcast,DeliveryAttempt,Company,User,Membership,now
-from .security import encrypt,decrypt,sign,raw_key,make_user_session,read_session,verify_password,password_hash,totp_secret,totp_verify
+from .models import Content,ContentPlatform,Credential,MediaAsset,OAuthApp,AppSetting,Broadcast,DeliveryAttempt,Company,User,Membership,Invitation,now
+from .security import encrypt,decrypt,sign,raw_key,make_user_session,read_session,verify_password,password_hash,totp_secret,totp_match
 from .media import media_url,path_for,public_base
 from .tokens import can_refresh,refresh_credential
 from .errors import PlatformError
@@ -41,14 +43,29 @@ async def lifespan(app):
 
 app=FastAPI(title='Akış API',lifespan=lifespan,docs_url='/api/docs' if settings.local_mode else None,redoc_url=None)
 app.include_router(router)
-from .admin import router as admin_router
+from .admin import router as admin_router, invite_hash
 app.include_router(admin_router)
 
 APP_ORIGINS={o.strip().rstrip('/') for o in settings.app_client_origins.split(',') if o.strip()}
 
+_origins={'value':None,'at':0.0}
 def allowed_origins():
-    with Session() as db: public=public_base(db)
-    return {settings.app_origin.rstrip('/'),public,*APP_ORIGINS} - {''}
+    # Checked on every write request; the public address changes rarely, so it is re-read at most every 30 s.
+    if _origins['value'] is None or time.monotonic()-_origins['at']>30:
+        with Session() as db: public=public_base(db)
+        _origins['value']={settings.app_origin.rstrip('/'),public,*APP_ORIGINS} - {''};_origins['at']=time.monotonic()
+    return _origins['value']
+
+# The studio shell (when this server hosts the built UI) only loads its own files; media may come from Cloudinary.
+SPA_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://res.cloudinary.com; media-src 'self' blob: https://res.cloudinary.com; connect-src 'self'; font-src 'self' data:; object-src 'none'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+
+class ApiGZip(GZipMiddleware):
+    """Compress JSON and the UI bundle; media files are already compressed, so they pass through untouched."""
+    async def __call__(self,scope,receive,send):
+        if scope['type']=='http' and scope['path'].endswith('/file'): return await self.app(scope,receive,send)
+        await super().__call__(scope,receive,send)
+# Registered before guards so it sits inside it: guards re-streams bodies, which would make gzip ignore minimum_size.
+app.add_middleware(ApiGZip,minimum_size=1024)
 
 @app.middleware('http')
 async def guards(req,call_next):
@@ -56,14 +73,20 @@ async def guards(req,call_next):
         return JSONResponse({'error':'Yerel mod yalnızca bu bilgisayardan kullanılabilir.'},403)
     if req.method not in ('GET','HEAD','OPTIONS'):
         if req.headers.get('origin','') not in allowed_origins(): return JSONResponse({'error':'İstek kaynağı doğrulanamadı.'},403)
+        if req.headers.get('content-type','').startswith('application/json') and b'\\u0000' in (await req.body()).lower(): return JSONResponse({'error':'Metinde geçersiz karakter var.'},400)
+    if '\x00' in unquote(req.url.path) or '%00' in req.url.query: return JSONResponse({'error':'Adreste geçersiz karakter var.'},400)
     response=await call_next(req)
     if not req.url.path.endswith('/file'): response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
+    response.headers['X-Frame-Options']='DENY'
+    response.headers['Content-Security-Policy']="frame-ancestors 'none'; base-uri 'none'; form-action 'none'" if req.url.path.startswith('/api/') else SPA_CSP
+    response.headers['Permissions-Policy']='camera=(), microphone=(), geolocation=()'
+    if settings.app_origin.startswith('https://'): response.headers['Strict-Transport-Security']='max-age=31536000; includeSubDomains'
     return response
 
 # Native apps call the API cross-origin with a bearer token; no cookies are shared with them.
-app.add_middleware(CORSMiddleware,allow_origins=sorted(APP_ORIGINS),allow_credentials=False,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Akis-Company','X-Akis-Client'],max_age=3600)
+app.add_middleware(CORSMiddleware,allow_origins=sorted(APP_ORIGINS),allow_credentials=False,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Akis-Company','X-Akis-Client','If-None-Match'],expose_headers=['ETag'],max_age=3600)
 
 @app.exception_handler(HTTPException)
 async def http_error(req,exc):
@@ -104,39 +127,113 @@ def session(req:Request):
         if fresh: set_session(r,user)
         return r
 
+def claim_totp_step(db,user,step):
+    """Record the used time step with a conditional UPDATE so a code racing itself is accepted once."""
+    won=db.execute(update(User).where(User.id==user.id,or_(User.totp_last_counter.is_(None),User.totp_last_counter<step)).values(totp_last_counter=step)).rowcount==1
+    if won: db.commit();user.totp_last_counter=step
+    return won
+
 class LoginInput(BaseModel):
     email:str=Field(default='',max_length=254)
     password:str=Field(max_length=300)
     code:str=Field(default='',max_length=12)
 
+def login_limits(db,email,req):
+    """Per IP+account (5) and per account (20) failure windows of 15 minutes; raises 429 when exhausted."""
+    ip=req.client.host if req.client else 'unknown'
+    limits=[]
+    for identifier,maximum in (('login:'+hashlib.sha256((ip+'|'+email).encode()).hexdigest(),5),('login-account:'+hashlib.sha256(email.encode()).hexdigest(),20)):
+        row=db.get(AppSetting,identifier);info=json.loads(row.value) if row else {'count':0,'until':0}
+        if info['until']>now() and info['count']>=maximum: raise HTTPException(429,'Çok fazla deneme yapıldı. 15 dakika sonra tekrar dene.')
+        limits.append((identifier,row,info))
+    return limits
+
+def login_failed(db,limits,message):
+    for identifier,row,info in limits:
+        if info['until']<=now(): info={'count':0,'until':now()+900}
+        info['count']+=1
+        if not row: row=AppSetting(key=identifier,value='');db.add(row)
+        row.value=json.dumps(info)
+    db.commit()
+    raise HTTPException(401,message)
+
+def authenticate(db,email,password,code,limits):
+    """Password (+ TOTP) check shared by sign-in and invitation acceptance."""
+    user=db.scalar(select(User).where(User.email==email))
+    # Always hash, even for unknown e-mails, so timing does not reveal which accounts exist.
+    ok=verify_password(password,user.password_hash if user else '') and bool(user) and not user.disabled
+    if ok and user.totp_enabled:
+        if not code: raise HTTPException(401,{'error':'Doğrulama uygulamandaki 6 haneli kodu gir.','needs_code':True})
+        step=totp_match(decrypt(user.totp_secret),code,after=user.totp_last_counter)
+        ok=step is not None and claim_totp_step(db,user,step)
+    if not ok: login_failed(db,limits,{'error':'E-posta, parola veya doğrulama kodu yanlış.','needs_code':bool(user and user.totp_enabled and code)})
+    for _,row,_ in limits:
+        if row: db.delete(row)
+    return user
+
 @app.post('/api/login')
 def login(data:LoginInput,req:Request):
     email=(data.email or settings.admin_email).strip().lower()
-    identifier='login:'+hashlib.sha256(((req.client.host if req.client else 'unknown')+'|'+email).encode()).hexdigest()
     with Session() as db:
-        row=db.get(AppSetting,identifier);info=json.loads(row.value) if row else {'count':0,'until':0}
-        if info['until']>now() and info['count']>=5: raise HTTPException(429,'Çok fazla deneme yapıldı. 15 dakika sonra tekrar dene.')
-        user=db.scalar(select(User).where(User.email==email))
-        ok=bool(user) and not user.disabled and verify_password(data.password,user.password_hash)
-        if ok and user.totp_enabled:
-            if not data.code: raise HTTPException(401,{'error':'Doğrulama uygulamandaki 6 haneli kodu gir.','needs_code':True})
-            ok=totp_verify(decrypt(user.totp_secret),data.code)
-        if not ok:
-            if info['until']<=now(): info={'count':0,'until':now()+900}
-            info['count']+=1
-            if not row: row=AppSetting(key=identifier,value='');db.add(row)
-            row.value=json.dumps(info);db.commit()
-            raise HTTPException(401,{'error':'E-posta, parola veya doğrulama kodu yanlış.','needs_code':bool(user and user.totp_enabled and data.code)})
-        if row: db.delete(row)
+        user=authenticate(db,email,data.password,data.code,login_limits(db,email,req))
         audit(db,Actor(user.id,user.email,user.is_system_admin),'user.login','user',user.id,company_id=None,two_factor=user.totp_enabled)
         db.commit()
         r=JSONResponse({'ok':True});set_session(r,user,req);r.delete_cookie('akis_logged_out');return r
+
+# ---------- Invitations ----------
+
+def open_invitation(db,token):
+    i=db.scalar(select(Invitation).where(Invitation.token_hash==invite_hash(token)))
+    company=db.get(Company,i.company_id) if i else None
+    if not i or i.revoked or i.accepted_at or i.expires_at<now() or not company or company.disabled: raise HTTPException(404,'Davet geçersiz, kullanılmış veya süresi dolmuş. Şirket yöneticinden yeni bir davet iste.')
+    return i,company
+
+@app.get('/api/invites/{token}')
+def invite_info(token:str=Path_(max_length=100)):
+    with Session() as db:
+        i,company=open_invitation(db,token)
+        return {'company':company.name,'email':i.email,'role':i.role,'expires_at':i.expires_at}
+
+class AcceptInput(BaseModel):
+    password:str=Field(min_length=10,max_length=300)
+    code:str=Field(default='',max_length=12)
+    name:str=Field(default='',max_length=120)
+
+@app.post('/api/invites/{token}/accept')
+def accept_invite(data:AcceptInput,req:Request,token:str=Path_(max_length=100)):
+    """Existing account: its own password (and 2FA) proves consent. No account yet: this password creates it.
+    Both paths hash once and go through the sign-in rate limits."""
+    with Session() as db:
+        i,company=open_invitation(db,token)
+        limits=login_limits(db,i.email,req)
+        if db.scalar(select(User.id).where(User.email==i.email)):
+            user=authenticate(db,i.email,data.password,data.code,limits)
+        else:
+            user=User(email=i.email,name=(data.name or i.name).strip()[:120],password_hash=password_hash(data.password));db.add(user)
+            try: db.flush()
+            except IntegrityError: db.rollback();raise HTTPException(409,'Hesap aynı anda başka bir yerden oluşturuldu. Parolanla tekrar dene.')
+        # Single use even when two browsers accept at the same moment.
+        if db.execute(update(Invitation).where(Invitation.id==i.id,Invitation.accepted_at.is_(None),Invitation.revoked==False).values(accepted_at=now(),accepted_by=user.id)).rowcount!=1:
+            db.rollback();raise HTTPException(404,'Davet geçersiz, kullanılmış veya süresi dolmuş. Şirket yöneticinden yeni bir davet iste.')
+        if not db.scalar(select(Membership.id).where(Membership.company_id==i.company_id,Membership.user_id==user.id)):
+            db.add(Membership(company_id=i.company_id,user_id=user.id,role=i.role))
+        audit(db,Actor(user.id,user.email,user.is_system_admin,i.company_id),'member.joined','user',user.id,role=i.role,invitation=i.id)
+        db.commit()
+        r=JSONResponse({'ok':True,'company_id':i.company_id});set_session(r,user,req);r.delete_cookie('akis_logged_out');return r
 
 @app.post('/api/logout')
 def logout():
     r=JSONResponse({'ok':True});r.delete_cookie('akis_session')
     if settings.local_mode: r.set_cookie('akis_logged_out','1',httponly=True,samesite='lax',max_age=43200)
     return r
+
+@app.post('/api/me/sessions/revoke')
+def revoke_sessions(req:Request,actor=Depends(current_user)):
+    """Sign out every other browser and app (e.g. a lost phone); this device gets a fresh session."""
+    with Session() as db:
+        user=db.get(User,actor.user_id);user.session_version+=1
+        audit(db,actor,'user.sessions_revoked','user',user.id,company_id=None);db.commit()
+        r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
 class PasswordInput(BaseModel):
     current:str=Field(max_length=300)
@@ -168,8 +265,9 @@ class CodeInput(BaseModel):
 def totp_enable(data:CodeInput,req:Request,actor=Depends(current_user)):
     with Session() as db:
         user=db.get(User,actor.user_id)
-        if not user.totp_secret or not totp_verify(decrypt(user.totp_secret),data.code): raise HTTPException(400,'Kod doğrulanamadı. Uygulamadaki güncel kodu gir.')
-        user.totp_enabled=True;user.session_version+=1
+        step=totp_match(decrypt(user.totp_secret),data.code) if user.totp_secret else None
+        if step is None: raise HTTPException(400,'Kod doğrulanamadı. Uygulamadaki güncel kodu gir.')
+        user.totp_enabled=True;user.totp_last_counter=step;user.session_version+=1
         audit(db,actor,'user.2fa_enabled','user',user.id,company_id=None);db.commit()
         r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
@@ -178,8 +276,9 @@ def totp_disable(data:CodeInput,req:Request,actor=Depends(current_user)):
     with Session() as db:
         user=db.get(User,actor.user_id)
         if not user.totp_enabled: return {'ok':True}
-        if not verify_password(data.password,user.password_hash) or not totp_verify(decrypt(user.totp_secret),data.code): raise HTTPException(400,'Parola veya doğrulama kodu yanlış.')
-        user.totp_enabled=False;user.totp_secret=None;user.session_version+=1
+        step=totp_match(decrypt(user.totp_secret),data.code,after=user.totp_last_counter) if verify_password(data.password,user.password_hash) else None
+        if step is None or not claim_totp_step(db,user,step): raise HTTPException(400,'Parola veya doğrulama kodu yanlış.')
+        user.totp_enabled=False;user.totp_secret=None;user.totp_last_counter=None;user.session_version+=1
         audit(db,actor,'user.2fa_disabled','user',user.id,company_id=None);db.commit()
         r=JSONResponse({'ok':True});set_session(r,user,req);return r
 
@@ -188,24 +287,35 @@ def totp_disable(data:CodeInput,req:Request,actor=Depends(current_user)):
 def asset_json(a,db):
     return {'id':a.id,'filename':a.filename,'mime_type':a.mime_type,'width':a.width,'height':a.height,'duration_seconds':a.duration_seconds,'size':a.size,'status':a.status,'note':a.note,'error':a.error,'is_auto_generated':a.is_auto_generated,'folder':a.folder,'tags':a.tags or [],'archived':a.archived,'created_at':a.created_at,'stored':'cloudinary' if a.remote_url else 'local','url':media_url(a,db) if a.status=='ready' else None}
 
+ATTEMPTS_SHOWN=20
 def post_json(p,rows,attempts,assets,people):
     return {'id':p.id,'text':p.body_text,'status':p.status,'created':p.created_at*1000,'platforms':p.platforms,'asset':assets.get(p.asset_id),'options':p.options,
         'scheduled_at':p.scheduled_at,'created_by':people.get(p.created_by,''),'approved_by':people.get(p.approved_by,''),'approved_at':p.approved_at,'review_note':p.review_note,
         'deliveries':[{'id':r.id,'platform':r.platform,'recipient':r.recipient,'status':r.status,'error':r.error_message,'error_code':r.error_code,'externalId':r.external_post_id,'retry_count':r.retry_count,'next_attempt_at':r.next_attempt_at,'sent_at':r.sent_at,'media_note':r.progress.get('media_note'),
-            'attempts':[{'started_at':a.started_at,'finished_at':a.finished_at,'stage':a.stage,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message} for a in attempts.get(r.id,[])]} for r in rows if r.content_id==p.id]}
+            'attempts_total':len(attempts.get(r.id,[])),
+            'attempts':[{'started_at':a.started_at,'finished_at':a.finished_at,'stage':a.stage,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message} for a in attempts.get(r.id,[])[:ATTEMPTS_SHOWN]]} for r in rows.get(p.id,[])]}
 
 @app.get('/api/state')
-def state(actor=Depends(require('read'))):
+def state(req:Request,actor=Depends(require('read'))):
+    """Polled every few seconds by open studios. An unchanged state answers 304 with no body."""
+    body=json.dumps(state_json(actor),ensure_ascii=False,separators=(',',':')).encode()
+    # Bound to the viewer as well as the data: one person's tag never validates another's cached copy.
+    etag='"'+hashlib.sha256(f'{actor.user_id}|{actor.company_id}|'.encode()+body).hexdigest()[:32]+'"'
+    if req.headers.get('if-none-match')==etag: return Response(status_code=304,headers={'ETag':etag})
+    return Response(body,media_type='application/json',headers={'ETag':etag})
+
+def state_json(actor):
     cid=actor.company_id
     with Session() as db:
         company=db.get(Company,cid)
         creds=list(db.scalars(select(Credential).where(Credential.company_id==cid)))
         posts=list(db.scalars(select(Content).where(Content.company_id==cid).order_by(Content.created_at.desc()).limit(300)))
         ids=[p.id for p in posts]
-        rows=list(db.scalars(select(ContentPlatform).where(ContentPlatform.content_id.in_(ids)))) if ids else []
-        attempts={}
-        if rows:
-            for a in db.scalars(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id.in_([r.id for r in rows])).order_by(DeliveryAttempt.started_at.desc())):
+        rows={}
+        for r in (db.scalars(select(ContentPlatform).where(ContentPlatform.content_id.in_(ids))) if ids else []): rows.setdefault(r.content_id,[]).append(r)
+        attempts={};delivery_ids=[r.id for group in rows.values() for r in group]
+        if delivery_ids:
+            for a in db.scalars(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id.in_(delivery_ids)).order_by(DeliveryAttempt.started_at.desc())):
                 attempts.setdefault(a.delivery_id,[]).append(a)
         assets={a.id:asset_json(a,db) for a in db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source').order_by(MediaAsset.created_at.desc()).limit(500))}
         people={u.id:(u.name or u.email) for u in db.scalars(select(User).join(Membership,Membership.user_id==User.id).where(Membership.company_id==cid))}
@@ -304,6 +414,7 @@ def save_public(data:PublicInput,actor=Depends(current_user)):
         if not row: row=AppSetting(key='public_base_url',value=value);db.add(row)
         else: row.value=value
         audit(db,actor,'system.public_url','setting','public_base_url',company_id=None,value=value);db.commit()
+    _origins['value']=None
     return {'ok':True}
 
 # ---------- Media library ----------
@@ -324,18 +435,24 @@ async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
         pillow_heif.register_heif_opener()
         try:
             with Image.open(path) as image:
+                pixels=image.width*image.height
                 image.verify();mime='image/'+str(image.format or 'unknown').lower()
+            # A few-KB PNG can declare a huge canvas; refuse it before a worker tries to decode it.
+            if pixels>Image.MAX_IMAGE_PIXELS: raise HTTPException(400,'Görsel en fazla 40 megapiksel olabilir.')
+        except HTTPException: raise
         except Exception:
             with path.open('rb') as f: header=f.read(32)
             if header[4:8]!=b'ftyp' and not header.startswith(b'\x1aE\xdf\xa3'): raise HTTPException(400,'JPEG, PNG, WebP, HEIC, MP4, MOV veya WebM dosyası yükle.')
             mime='video/mp4'
         with Session() as db:
-            a=MediaAsset(id=identifier,company_id=actor.company_id,uploaded_by=actor.user_id,filename=Path(file.filename or 'medya').name[:240],storage_key=path.name,mime_type=mime,size=size,status='processing')
+            a=MediaAsset(id=identifier,company_id=actor.company_id,uploaded_by=actor.user_id,filename=(''.join(ch for ch in Path(file.filename or '').name if ch.isprintable())[:240] or 'medya'),storage_key=path.name,mime_type=mime,size=size,status='processing')
             db.add(a);audit(db,actor,'media.uploaded','media',identifier,filename=a.filename,size=size);db.commit();result=asset_json(a,db)
         return result
     except Exception:
         path.unlink(missing_ok=True);raise
     finally: await file.close()
+
+def like_escape(value): return value.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')
 
 def company_asset(db,identifier,actor):
     a=db.get(MediaAsset,identifier)
@@ -347,10 +464,13 @@ def list_media(folder:str='',tag:str='',q:str='',archived:bool=False,actor=Depen
     with Session() as db:
         query=select(MediaAsset).where(MediaAsset.company_id==actor.company_id,MediaAsset.variant=='source',MediaAsset.archived==archived)
         if folder: query=query.where(MediaAsset.folder==folder)
-        if q: query=query.where(MediaAsset.filename.ilike(f'%{q}%'))
-        items=[asset_json(a,db) for a in db.scalars(query.order_by(MediaAsset.created_at.desc()).limit(500))]
-        if tag: items=[a for a in items if tag in a['tags']]
-        folders=sorted({f for f in db.scalars(select(MediaAsset.folder).where(MediaAsset.company_id==actor.company_id)) if f})
+        # % and _ typed by the user are literal characters, not wildcards.
+        if q: query=query.where(MediaAsset.filename.ilike('%'+like_escape(q)+'%',escape='\\'))
+        query=query.order_by(MediaAsset.created_at.desc())
+        # Tags live in a JSON list; filter before the 500 cap so older tagged files are still found.
+        found=db.scalars(query if tag else query.limit(500))
+        items=[asset_json(a,db) for a in found if not tag or tag in (a.tags or [])][:500]
+        folders=sorted(db.scalars(select(MediaAsset.folder).where(MediaAsset.company_id==actor.company_id,MediaAsset.variant=='source',MediaAsset.folder!='').distinct()))
         return {'items':items,'folders':folders}
 
 @app.get('/api/media/{identifier}')
@@ -488,10 +608,12 @@ def create_content(data:ContentInput,background:BackgroundTasks,actor=Depends(re
             if existing.company_id!=actor.company_id or existing.fingerprint!=fingerprint: raise HTTPException(409,'Bu istek daha önce farklı içerikle kaydedilmiş. Gönderiler ekranını kontrol et.')
             return {'id':identifier,'alreadySaved':True}
         company=db.get(Company,actor.company_id)
-        p=Content(id=identifier,company_id=actor.company_id,created_by=actor.user_id,fingerprint=fingerprint);db.add(p);db.flush()
-        outcome=apply_input(db,p,data,actor,company)
-        audit(db,actor,'content.'+{'draft':'draft_saved','submitted':'submitted','approved':'approved'}[outcome],'content',identifier,platforms=p.platforms,scheduled_at=p.scheduled_at)
-        try: db.commit()
+        p=Content(id=identifier,company_id=actor.company_id,created_by=actor.user_id,fingerprint=fingerprint)
+        try:
+            db.add(p);db.flush()
+            outcome=apply_input(db,p,data,actor,company)
+            audit(db,actor,'content.'+{'draft':'draft_saved','submitted':'submitted','approved':'approved'}[outcome],'content',identifier,platforms=p.platforms,scheduled_at=p.scheduled_at)
+            db.commit()
         except IntegrityError:
             db.rollback();old=db.get(Content,identifier)
             if old and old.company_id==actor.company_id and old.fingerprint==fingerprint: return {'id':identifier,'alreadySaved':True}
@@ -544,7 +666,10 @@ def cancel_schedule(identifier:str,actor=Depends(require('approve'))):
         p=company_content(db,identifier,actor)
         rows=list(db.scalars(select(ContentPlatform).where(ContentPlatform.content_id==p.id)))
         if p.status!='scheduled' or any(r.status!='pending' or r.retry_count or r.progress for r in rows): raise HTTPException(400,'Gönderim başladığı için plan iptal edilemez.')
-        for r in rows: db.delete(r)
+        # Conditional delete: a worker that claimed a row after the read above (pending → sending) keeps it,
+        # the count no longer matches and the cancel is rolled back instead of deleting a delivery in flight.
+        removed=db.execute(delete(ContentPlatform).where(ContentPlatform.content_id==p.id,ContentPlatform.status=='pending',ContentPlatform.retry_count==0)).rowcount
+        if removed!=len(rows): db.rollback();raise HTTPException(400,'Gönderim başladığı için plan iptal edilemez.')
         db.execute(delete(Broadcast).where(Broadcast.content_id==p.id))
         p.status='draft';p.approved_by=None;p.approved_at=None;p.updated_at=now()
         audit(db,actor,'content.schedule_cancelled','content',identifier);db.commit()
@@ -568,3 +693,8 @@ def retry(data:RetryInput,actor=Depends(require('approve'))):
         if row.status!='failed': raise HTTPException(400,'Yalnızca kesin başarısız gönderimler yeniden denenebilir.')
         changed=db.execute(update(ContentPlatform).where(ContentPlatform.id==row.id,ContentPlatform.status=='failed').values(status='pending',next_attempt_at=now(),retry_count=0,error_code=None,error_message=None,final_request_started=False)).rowcount
         p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();return {'ok':bool(changed)}
+
+# The public launcher builds the Vite app before starting Uvicorn. Serving that
+# immutable build here keeps the development server off the public internet.
+frontend_dist=Path(__file__).resolve().parents[2]/'dist'
+if frontend_dist.is_dir(): app.mount('/',StaticFiles(directory=frontend_dist,html=True),name='studio')

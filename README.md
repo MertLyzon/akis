@@ -5,7 +5,7 @@ Türkçe, çok şirketli sosyal medya uygulaması. React arayüzü; FastAPI, SQL
 ## 0.3 ile gelenler: şirket kullanımı
 
 - **Şirket çalışma alanları**: Her şirketin hesapları, içerikleri, medyası ve uygulama ayarları birbirinden ayrı tutulur. Bir kişi birden fazla şirkete üye olabilir; kenar çubuğundan şirket değiştirilir.
-- **Kullanıcılar ve roller**: Şirket yöneticisi, onaylayan, editör, görüntüleyen. Yeni üyeye geçici parola verilir; ilk girişte kendi parolasını belirlemeden hiçbir işlem yapamaz.
+- **Kullanıcılar ve roller**: Şirket yöneticisi, onaylayan, editör, görüntüleyen. Yönetici kişiyi **davet bağlantısıyla** ekler (7 gün geçerli, tek kullanımlık, iptal edilebilir). Hesabı olan kişi kendi parolasıyla (ve 2FA koduyla) katılır, hesabı olmayan parolasını kendisi belirler; kimse onayı olmadan bir şirkete eklenmez ve davet cevabı e-postanın kayıtlı olup olmadığını göstermez. Yöneticinin sıfırladığı parola geçicidir; ilk girişte değiştirilmeden işlem yapılamaz.
 - **Paylaşım onayı**: Editörün hazırladığı içerik "Onay bekliyor" durumuna geçer; onaylayan veya yönetici onayladığında yayımlanır, reddedilirse not ile editöre döner. Şirket ayarlarından kapatılabilir.
 - **Takvim ve zamanlama**: İçerik ileri bir tarihe planlanır; saatler şirketin saat dilimine göre yorumlanır. Takvim ekranı aylık görünüm sunar; plan gönderim başlamadan iptal edilebilir.
 - **İşlem geçmişi**: Kim giriş yaptı, kim içeriği değiştirdi, kim onayladı, kim hangi hesabı bağladı. Anahtarlar bu kayıtlara yazılmaz.
@@ -33,6 +33,42 @@ Yerel kip yalnızca loopback adresinde çalışır; sistem yöneticisi olarak ot
 
 `scripts/bootstrap.py`, mevcut dosyaları ezmeden `.env` anahtarlarını ve ilk sunucu giriş parolasını `.local-admin-password` dosyasında oluşturur. Bu dosyaları paylaşmayın. İlk açılışta `ADMIN_EMAIL` (varsayılan `admin@akis.local`) ve `ADMIN_PASSWORD_HASH` ile sistem yöneticisi ve ilk şirket oluşturulur. 0.2 veritabanı yükseltildiğinde tüm eski kayıtlar bu ilk şirkete taşınır. Var olan kurulumdaki eski D1 kayıtları `scripts/import_legacy.py` ile bir kez yerel veritabanına aktarılır. Eski belirsiz/bekleyen gönderimler otomatik gönderilmez.
 
+### Sabit geliştirme adresi (Cloudflare Tunnel)
+
+`trycloudflare.com` Quick Tunnel adresleri geçicidir. Sabit bir adres için Cloudflare DNS'inde yönetilen bir alan adı ve bir kez oluşturulan named tunnel gerekir. Örnek kurulum (`akis.example.com` yerine kendi adresinizi yazın):
+
+```sh
+cloudflared tunnel login
+cloudflared tunnel create akis-dev
+cloudflared tunnel route dns akis-dev akis.example.com
+```
+
+Ardından `.env` içine aşağıdakileri ekleyin:
+
+```dotenv
+APP_ORIGIN=https://akis.example.com
+PUBLIC_BASE_URL=https://akis.example.com
+CLOUDFLARE_TUNNEL=akis-dev
+```
+
+Sonraki açılışlarda frontend, backend ve tüneli tek terminalden birlikte çalıştırmak yeterlidir:
+
+```sh
+sh start-public.sh
+```
+
+Başlatıcı arayüzü üretim paketi olarak derler; FastAPI hem arayüzü hem API'yi sunar ve tünel yalnızca bu sunucuya bağlanır. Böylece Vite geliştirme sunucusu internete açılmaz. `Ctrl+C` iki süreci de kapatır. Adres değişmediği için OAuth sağlayıcılarındaki dönüş adresi yalnızca bir kez `https://akis.example.com/api/oauth/<platform>/callback` olarak kaydedilir. Cloudflare tünel kimlik dosyalarını ve token'larını repoya eklemeyin.
+
+Alan adınız yoksa ngrok ücretsiz hesapla hesaba özel sabit bir geliştirme adresi verir. `ngrok config add-authtoken ...` komutunu ngrok panelinden **bir kez** çalıştırın; token'ı `.env` içine veya repoya koymayın. Sonra `.env` ayarları şöyle olmalıdır:
+
+```dotenv
+APP_ORIGIN=https://hesabiniza-atanan-adres.ngrok-free.dev
+PUBLIC_BASE_URL=https://hesabiniza-atanan-adres.ngrok-free.dev
+PUBLIC_TUNNEL_PROVIDER=ngrok
+```
+
+Bu kurulumda da sonraki açılışların tek komutu `sh start-public.sh` olur.
+
 ## Windows ve Mac için Docker kurulumu
 
 Docker Desktop/Compose ve ilk anahtarları üretmek için Python gerekir. Uygulama klasöründe:
@@ -58,7 +94,7 @@ Windows, macOS, Linux ve Android uygulamaları [Tauri 2](https://tauri.app) ile 
 
 **iPhone ve diğer cihazlar: ana ekrana eklenen web uygulaması (PWA), ücretsiz.** Apple Developer hesabı veya Mac gerekmez. iPhone'da sunucu adresini Safari'de açın, **Paylaş → Ana Ekrana Ekle**'ye dokunun; Akış simgesiyle tam ekran açılır. Android/Chrome/Edge'de uygulama içinde **Yükle** düğmesi çıkar. Güncellemeler sunucu güncellenince herkese ulaşır. Service worker (`public/sw.js`) yalnızca uygulama kabuğunu önbelleğe alır; `/api` isteklerini, medyayı ve oturumu hiçbir zaman saklamaz. Kurulum için sunucunun HTTPS olması gerekir. Yeni bir sürümde kabuk dosyaları değiştiyse `sw.js` içindeki `CACHE` adını artırın.
 
-**Masaüstü ve Android paketleri: GitHub'da derleme (önerilen):** Actions sekmesinde **Uygulamalar → Run workflow**. Testler geçerse Windows (`.msi`, `.exe`), macOS (evrensel `.dmg`; genel depolarda GitHub'ın Mac makineleri ücretsizdir, imzasız paket ilk açılışta sağ tık → Aç ile açılır), Linux (`.deb`, `.rpm`, `.AppImage`) ve Android (`.apk`) paketleri çalıştırmanın *Artifacts* bölümüne düşer. `v0.3.0` gibi bir etiket göndermek de derlemeyi başlatır.
+**Masaüstü ve Android paketleri: GitHub'da derleme (önerilen):** Actions sekmesinde **Uygulamalar → Run workflow**. Testler geçerse Windows (`.msi`, `.exe`), macOS (evrensel `.dmg`; genel depolarda GitHub'ın Mac makineleri ücretsizdir, imzasız paket ilk açılışta sağ tık → Aç ile açılır), Linux (`.deb`, `.rpm`, `.AppImage`) ve Android (`.apk`) paketleri çalıştırmanın *Artifacts* bölümüne düşer. `v0.4.0-dev.1` gibi bir geliştirme etiketi gönderildiğinde paketler ayrıca GitHub Releases altında ön sürüm olarak yayımlanır.
 
 **Kendi bilgisayarında:** [Rust](https://rustup.rs) ve platform gereksinimleri ([Tauri önkoşulları](https://tauri.app/start/prerequisites/): Windows'ta VS Build Tools, Linux'ta webkit2gtk) kurulduktan sonra:
 
@@ -130,5 +166,7 @@ python -m alembic -c backend/alembic.ini upgrade head
 ```
 
 Python komutlarını bağımlılıkların kurulu olduğu sanal ortamda çalıştırın. Alembic için `PYTHONPATH=backend` gerekir; başlatıcı bunu ayarlar.
+
+Doğrulama (0.3.1): Python 3.12 ve 3.14'te SQLite, Python 3.12'de PostgreSQL 16 üzerinde tüm test paketi geçti (şirketler arası yetki matrisi, CSRF/CORS, 2FA tekrar ve yarış, OAuth kenar durumları, dosya yükleme, uzak medya, ETag, kuyruk yarışları, yedek bütünlüğü, davet akışı). Ayrıntılı rapor: `docs/guvenlik-dogrulama-2026-09-28.md`. Testleri PostgreSQL'de çalıştırmak için geçici bir veritabanı adresini `AKIS_TEST_DATABASE_URL` olarak verin (tablolar her testten sonra silinir; gerçek veritabanı vermeyin).
 
 Doğrulama (0.3): 44 otomatik test geçti. Önceki 28 teste ek olarak şirket izolasyonu, roller, onay/red akışı, şirket saat dilimiyle zamanlama, işlem geçmişinde anahtar sızmaması, sistem panelinde anahtar görünmemesi, gönderim denemesi kaydı, medya kütüphanesi, iki aşamalı giriş, parola değişince eski oturumların kapanması, yedek alma/geri yükleme kontrolü ve Cloudinary yükleme/indirme akışı test edildi. Alembic geçişi eski 0.2 verisiyle denendi, modellerle şema farkı yok. Cloudinary bağlantısı gerçek hesapla doğrulandı. Gerçek sosyal medya hesaplarıyla canlı paylaşım yapılmadı; platform yanıtları testlerde taklit edildi.

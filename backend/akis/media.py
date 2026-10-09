@@ -26,7 +26,8 @@ def public_base(db):
 def media_url(asset,db,public=False):
     # Cloudinary URLs are already public HTTPS, which is what Instagram needs to fetch the file.
     if asset.remote_url: return asset.remote_url
-    expires=now()+86400*2
+    # Day-aligned expiry (valid 1–2 days) keeps the URL identical across polls, so browsers reuse the cached file.
+    expires=(now()//86400+2)*86400
     relative=f'/api/media/{asset.id}/file?expires={expires}&signature={sign(f"{asset.id}:{expires}")}'
     if public:
         base=public_base(db)
@@ -119,6 +120,8 @@ def process_asset(asset_id):
             a.status='ready';a.updated_at=now();db.commit()
         except Exception as exc:
             a.status='failed';a.error=exc.message if isinstance(exc,PlatformError) else 'Dosya okunamadı. Geçerli bir görsel veya video yükle.';a.updated_at=now();db.commit()
+            # A failed asset is never retried (the user uploads again), so its files only use disk.
+            for leftover in {source,path_for(a.id+'.jpg'),path_for(a.id+'.mp4')}: leftover.unlink(missing_ok=True)
 
 def variant_for(db,source,platform):
     if platform!='tiktok': return source

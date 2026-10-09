@@ -1,10 +1,10 @@
-import importlib, logging, time
-from sqlalchemy import select, update
+import importlib, json, logging, time
+from sqlalchemy import select, update, delete, or_
 from .queue import celery
 from .db import Session
-from .models import Content,ContentPlatform,MediaAsset,Credential,Broadcast,DeliveryAttempt,now
+from .models import Content,ContentPlatform,MediaAsset,Credential,Broadcast,DeliveryAttempt,OAuthState,AppSetting,Invitation,now
 from .errors import PlatformError
-from .media import process_asset,variant_for
+from .media import process_asset,variant_for,path_for
 from .tokens import token_for,refresh_due
 from .tasks.common import Context,Waiting
 from .config import settings
@@ -29,7 +29,12 @@ def run_delivery(identifier):
         db.commit()
         if not changed: return
         delivery=db.get(ContentPlatform,identifier);content=db.get(Content,delivery.content_id)
-        attempt=DeliveryAttempt(delivery_id=identifier,stage='start');db.add(attempt);db.commit();attempt_id=attempt.id
+        # Polling a platform that is still processing (Instagram/TikTok/X, every 10–60 s) continues the
+        # same attempt instead of adding a row per poll; a day of waiting would otherwise be thousands of rows.
+        attempt=db.scalar(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id==identifier).order_by(DeliveryAttempt.started_at.desc()).limit(1))
+        if attempt and attempt.outcome=='waiting': attempt.outcome='running';attempt.finished_at=None
+        else: attempt=DeliveryAttempt(delivery_id=identifier,stage='start');db.add(attempt)
+        db.commit();attempt_id=attempt.id
         try:
             asset=db.get(MediaAsset,content.asset_id) if content.asset_id else None
             if asset:
@@ -82,20 +87,48 @@ def recover_stale(db):
             row.status='pending';row.retry_count+=1;row.next_attempt_at=now()
         else: row.status='failed';row.error_message='İşlem üç kez kesildi. Medyanı ve sunucu durumunu kontrol et.'
         row.updated_at=now()
-    db.execute(update(MediaAsset).where(MediaAsset.status=='converting',MediaAsset.updated_at<now()-900).values(status='failed',error='Medya işleme kesildi. Dosyayı yeniden yükle.'))
+    interrupted=list(db.scalars(select(MediaAsset).where(MediaAsset.status=='converting',MediaAsset.updated_at<now()-900)))
+    for a in interrupted:
+        a.status='failed';a.error='Medya işleme kesildi. Dosyayı yeniden yükle.';a.updated_at=now()
     db.commit()
+    for a in interrupted:
+        for key in {a.storage_key,a.id+'.jpg',a.id+'.mp4'}:
+            try: path_for(key).unlink(missing_ok=True)
+            except (OSError,ValueError): pass
     for row in stale: update_content(db,row.content_id)
 
 @celery.task(name='akis.process_media')
 def process_media(identifier): process_asset(identifier)
 
+def housekeeping():
+    """Drop rows that only matter for minutes: used/expired OAuth states and lapsed login throttles."""
+    with Session() as db:
+        db.execute(delete(OAuthState).where(OAuthState.expires_at<now()-3600))
+        # Used, revoked or expired invitations stay 30 days for the admin's reference, then go.
+        db.execute(delete(Invitation).where(Invitation.expires_at<now()-30*86400))
+        for row in db.scalars(select(AppSetting).where(or_(AppSetting.key.startswith('login:'),AppSetting.key.startswith('login-account:')))):
+            try: lapsed=json.loads(row.value).get('until',0)<=now()
+            except (ValueError,AttributeError): lapsed=True
+            if lapsed: db.delete(row)
+        db.commit()
+
 @celery.task(name='akis.refresh_tokens')
-def refresh_tokens(): refresh_due()
+def refresh_tokens():
+    housekeeping();refresh_due()
 
 @celery.task(name='akis.backup')
 def scheduled_backup():
     from .backup import create_backup
     create_backup()
+
+def ensure_local_daily_backup():
+    """Create a verified backup when local mode has no backup from the last 24 hours."""
+    from .backup import create_backup, list_backups, verify_backup
+    backups=list_backups()
+    if backups and backups[0]['created_at']>=int(time.time())-86400: return None
+    result=create_backup();check=verify_backup(result['file'])
+    if not check['ok']: raise RuntimeError(f"Backup verification failed: {check['mismatches']}")
+    return result
 
 def enqueue_content(content_id):
     if settings.queue_mode!='celery': return
@@ -121,7 +154,7 @@ def dispatch():
 
 def local_worker(stop):
     # Development fallback when Docker/Redis are unavailable; uses the same durable rows and publishers.
-    last_refresh=0
+    last_refresh=0;last_backup_check=0
     while not stop.wait(2):
         try:
             with Session() as db:
@@ -132,5 +165,7 @@ def local_worker(stop):
             for identifier in ids:
                 if stop.is_set(): return
                 run_delivery(identifier)
-            if time.monotonic()-last_refresh>300: refresh_due();last_refresh=time.monotonic()
+            if time.monotonic()-last_refresh>300: housekeeping();refresh_due();last_refresh=time.monotonic()
+            if time.monotonic()-last_backup_check>300:
+                ensure_local_daily_backup();last_backup_check=time.monotonic()
         except Exception: log.error('Local background worker paused; retrying next cycle')

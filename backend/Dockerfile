@@ -8,4 +8,7 @@ ENV PYTHONPATH=/app/backend MEDIA_ROOT=/app/data/media
 RUN useradd --uid 10001 --create-home akis && mkdir -p /app/data/media /app/backups && chown -R akis:akis /app
 USER akis
 EXPOSE 8000
-CMD ["uvicorn", "akis.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
+# X-Forwarded-For is honoured only from the address in FORWARDED_ALLOW_IPS (compose pins nginx there);
+# any other client, including one reaching port 8000 directly, cannot choose its own IP for the rate limit.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+CMD ["uvicorn", "akis.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--proxy-headers"]

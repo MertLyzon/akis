@@ -38,6 +38,10 @@ def ping():
     import cloudinary.api
     return cloudinary.api.ping().get('status')=='ok'
 
+def trusted_remote(url):
+    u=urlsplit(url or '');host=u.hostname or ''
+    return u.scheme=='https' and not u.username and not u.password and (host=='cloudinary.com' or host.endswith('.cloudinary.com'))
+
 @contextmanager
 def local_file(asset):
     """Yield a local path for the asset, downloading from Cloudinary when this worker has no copy."""
@@ -46,12 +50,11 @@ def local_file(asset):
     if path and path.exists():
         yield path;return
     if not asset.remote_url: raise FileNotFoundError('Medya dosyası bulunamadı.')
-    host=urlsplit(asset.remote_url).hostname or ''
-    if not host.endswith('cloudinary.com'): raise FileNotFoundError('Medya kaynağı doğrulanamadı.')
+    if not trusted_remote(asset.remote_url): raise FileNotFoundError('Medya kaynağı doğrulanamadı.')
     folder=Path(tempfile.mkdtemp(prefix='akis-media-',dir=settings.media_root))
     target=folder/('file'+Path(asset.storage_key or '.bin').suffix)
     try:
-        with httpx.stream('GET',asset.remote_url,timeout=httpx.Timeout(120,connect=15),follow_redirects=True) as r:
+        with httpx.stream('GET',asset.remote_url,timeout=httpx.Timeout(120,connect=15),follow_redirects=False) as r:
             r.raise_for_status()
             with target.open('wb') as f:
                 for chunk in r.iter_bytes(1024*1024): f.write(chunk)
