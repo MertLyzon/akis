@@ -80,6 +80,12 @@ docker compose up --build -d
 
 macOS'ta ilk komut için `python3` kullanabilirsiniz. http://localhost:8080 adresini açın; `.local-admin-password` dosyasındaki parolayla giriş yapın. Compose ayrı PostgreSQL, Redis, API, migration, worker, beat ve web servisleri oluşturur. Sistem ffmpeg'i imaja dahildir.
 
+Kök `Dockerfile`, servis sayısı sınırlı barındırma ortamları için migration, API,
+tek eşzamanlı düşük bellekli Celery worker ve Celery Beat süreçlerini birlikte
+çalıştırır. Süreçlerden biri durursa konteyner kapanır ve platform tarafından
+yeniden başlatılır. Bu düzen tek API replikası içindir; API yatay ölçeklenecekse
+worker ve Beat yeniden ayrı servislere taşınmalıdır.
+
 Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adiniz` ve `PUBLIC_BASE_URL=https://kendi-alan-adiniz` ekleyin, servisleri yeniden oluşturun. Compose web portu 127.0.0.1:8080'e bağlıdır; HTTPS proxy bu porta yönlenmelidir. LOCAL_MODE üretimde false kalmalıdır. Bu paket sunucuya otomatik yayımlanmış değildir.
 
 Yerel SQLite veritabanı ve Compose PostgreSQL veritabanı ayrıdır. Docker ilk açılışta boş çalışma alanı oluşturur; yerel kayıtları veya medyayı kendiliğinden taşımaz. Geçiş yapmadan önce yedek alın; mevcut yerel uygulama kullanılmaya devam edilebilir.

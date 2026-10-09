@@ -24,6 +24,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"
 
-# Apply committed schema changes before accepting traffic. Northflank runs this
-# image without the separate Compose `migrate` service used for local installs.
-CMD ["sh", "-c", "alembic -c backend/alembic.ini upgrade head && exec uvicorn akis.main:app --host 0.0.0.0 --port 8000 --no-access-log"]
+# Northflank's free project runs the API, one low-memory queue worker and Celery
+# Beat together. The hosted supervisor also applies migrations before startup.
+CMD ["python", "-m", "akis.hosted"]
