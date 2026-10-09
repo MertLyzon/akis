@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     keep_local_media: bool = True
     backup_dir: str = str(ROOT / 'backups')
     backup_keep: int = 14
+    # auto uploads verified backups to private Cloudinary raw storage when configured.
+    backup_remote: str = 'auto'
+    backup_download_max_mb: int = 500
     # Origins of the Tauri apps (desktop + mobile webviews). They authenticate with a bearer token, not cookies.
     app_client_origins: str = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420'
 

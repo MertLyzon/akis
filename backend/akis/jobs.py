@@ -118,17 +118,15 @@ def refresh_tokens():
 
 @celery.task(name='akis.backup')
 def scheduled_backup():
-    from .backup import create_backup
-    create_backup()
+    from .backup import create_verified_backup
+    create_verified_backup()
 
 def ensure_local_daily_backup():
     """Create a verified backup when local mode has no backup from the last 24 hours."""
-    from .backup import create_backup, list_backups, verify_backup
+    from .backup import create_verified_backup, list_backups
     backups=list_backups()
     if backups and backups[0]['created_at']>=int(time.time())-86400: return None
-    result=create_backup();check=verify_backup(result['file'])
-    if not check['ok']: raise RuntimeError(f"Backup verification failed: {check['mismatches']}")
-    return result
+    return create_verified_backup()
 
 def enqueue_content(content_id):
     if settings.queue_mode!='celery': return

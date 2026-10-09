@@ -9,17 +9,16 @@
 import json,sys
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root/'backend'))
-from akis.backup import create_backup,verify_backup,list_backups,load,restore_into
+from akis.backup import create_verified_backup,verify_backup,list_backups,load,restore_into
 
 def main(args):
     if not args or args[0] not in ('create','verify','list','restore'): print(__doc__);return 2
     if args[0]=='create':
-        result=create_backup();check=verify_backup(result['file'])
-        print(json.dumps({**result,'verified':check['ok'],'mismatches':check['mismatches']},indent=2));return 0 if check['ok'] else 1
+        result=create_verified_backup();print(json.dumps(result,indent=2));return 0
     if args[0]=='verify':
         check=verify_backup(args[1]);print(json.dumps(check,indent=2));return 0 if check['ok'] else 1
     if args[0]=='list':
-        for b in list_backups(): print(b['file'],b['size'])
+        for b in list_backups(): print(b['file'],b['size'],b.get('location','local'))
         return 0
     from sqlalchemy import create_engine
     url=args[2]

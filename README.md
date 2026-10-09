@@ -136,7 +136,7 @@ DATABASE_URL=postgresql://kullanici:parola@sunucu/veritabani?sslmode=require
 
 ## Yedekleme
 
-Beat servisi her gün otomatik yedek alır (`BACKUP_DIR`, varsayılan `backups/`, son 14 yedek saklanır). Sistem yönetimi ekranından elle yedek alınıp geri yükleme kontrolü yapılabilir. Komut satırından:
+Beat servisi her gün otomatik yedek alır. Yeni yedek önce geçici bir veritabanına geri yüklenerek doğrulanır; doğrulama geçmeden eski kopyalar silinmez. `CLOUDINARY_URL` yapılandırıldığında doğrulanmış arşiv ayrıca Cloudinary'ye herkese kapalı `private/raw` varlık olarak yüklenir ve yeniden dağıtımlardan etkilenmez. `BACKUP_REMOTE=local` bu uzak kopyayı kapatır. `BACKUP_DIR` yerel önbellek konumudur ve son `BACKUP_KEEP` (varsayılan 14) doğrulanmış yedek hem yerelde hem uzakta saklanır. Sistem yönetimi ekranından elle yedek alınıp yerel kopya kaybolmuş olsa bile süreli imzalı indirme ile uzak kopyanın geri yükleme kontrolü yapılabilir. Komut satırından:
 
 ```sh
 python scripts/backup.py create           # yedek al ve doğrula

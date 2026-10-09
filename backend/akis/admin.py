@@ -4,6 +4,7 @@ System admins see operational metadata only. Nothing here reads or returns acces
 refresh tokens or OAuth client secrets.
 """
 import hashlib, re, secrets
+import httpx
 from zoneinfo import ZoneInfo, available_timezones
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -212,10 +213,10 @@ def set_company_status(company_id:str,data:CompanyStatus,actor=Depends(system_ad
 
 @router.post('/api/system/backup')
 def run_backup(actor=Depends(system_admin)):
-    from .backup import create_backup,verify_backup
-    result=create_backup();check=verify_backup(result['file'])
-    with Session() as db: audit(db,actor,'system.backup','backup',result['file'],company_id=None,verified=check['ok']);db.commit()
-    return {**result,'verified':check['ok'],'mismatches':check['mismatches']}
+    from .backup import create_verified_backup
+    result=create_verified_backup()
+    with Session() as db: audit(db,actor,'system.backup','backup',result['file'],company_id=None,verified=True,location=result['location']);db.commit()
+    return result
 
 @router.post('/api/system/backup/{name}/verify')
 def verify(name:str,actor=Depends(system_admin)):
@@ -223,4 +224,5 @@ def verify(name:str,actor=Depends(system_admin)):
     if not re.fullmatch(r'akis-\d{8}-\d{6}\.json\.gz',name): raise HTTPException(400,'Geçersiz yedek adı.')
     try: return verify_backup(name)
     except FileNotFoundError: raise HTTPException(404,'Yedek bulunamadı.')
+    except httpx.HTTPError: raise HTTPException(503,'Uzak yedek depolamasına ulaşılamadı.')
     except (OSError,EOFError,ValueError,KeyError,TypeError): raise HTTPException(400,'Yedek dosyası bozuk veya eksik; geri yüklenemez.')
