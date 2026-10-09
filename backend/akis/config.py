@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     local_mode: bool = True
     media_root: str = str(ROOT / 'data' / 'media')
     max_upload_mb: int = 100
+    media_max_duration_seconds: int = 600
+    media_max_pixels: int = 40_000_000
+    ffmpeg_threads: int = 1
+    ffmpeg_timeout_seconds: int = 420
     graph_version: str = 'v23.0'
     ffmpeg_path: str = ''
     ffprobe_path: str = ''

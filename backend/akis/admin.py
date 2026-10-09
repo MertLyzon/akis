@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from typing import Literal
 from sqlalchemy import select, func, or_, and_
-from .config import settings
-from .db import Session, engine
+from .db import Session
 from .models import Company, User, Membership, AuditLog, Content, ContentPlatform, MediaAsset, Credential, DeliveryAttempt, Invitation, now
 from .security import password_hash
 from .access import require, system_admin, audit, ROLE_NAMES
 from . import storage
+from .health import service_health
 
 router=APIRouter()
 Role=Literal['admin','approver','editor','viewer']
@@ -160,20 +160,6 @@ def audit_log(before:int=0,before_id:str='',action:str='',limit:int=100,actor=De
         return {'items':[{'id':r.id,'at':r.created_at,'user':r.user_email,'action':r.action,'target_type':r.target_type,'target_id':r.target_id,'details':r.details} for r in rows]}
 
 # ---------- System admin ----------
-
-def service_health():
-    result={'database':False,'redis':None,'storage':None,'queue_mode':settings.queue_mode,'database_kind':engine.dialect.name}
-    try:
-        with engine.connect() as c: c.exec_driver_sql('select 1');result['database']=True
-    except Exception: pass
-    if settings.queue_mode=='celery':
-        try:
-            import redis
-            result['redis']=bool(redis.Redis.from_url(settings.redis_url,socket_timeout=2).ping())
-        except Exception: result['redis']=False
-    try: result['storage']=storage.ping()
-    except Exception: result['storage']=False
-    return result
 
 @router.get('/api/system/overview')
 def system_overview(actor=Depends(system_admin)):

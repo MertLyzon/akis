@@ -25,6 +25,7 @@ from .errors import PlatformError
 from .oauth import router,begin
 from .access import session_token,Actor,require,current_user,session_user,audit,ensure_bootstrap,first_system_admin,memberships_json,resolve_company,PERMISSIONS
 from . import storage
+from .health import is_ready,service_health
 
 Platform=Literal['x','instagram','tiktok','whatsapp']
 
@@ -107,6 +108,11 @@ def set_session(response,user,req=None):
 
 @app.get('/api/health')
 def health(): return {'ok':True,'queue':settings.queue_mode}
+
+@app.get('/api/ready')
+def readiness():
+    health=service_health();ready=is_ready(health)
+    return JSONResponse({'ok':ready,**health},status_code=200 if ready else 503)
 
 # ---------- Session, login, account ----------
 
@@ -438,7 +444,7 @@ async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
                 pixels=image.width*image.height
                 image.verify();mime='image/'+str(image.format or 'unknown').lower()
             # A few-KB PNG can declare a huge canvas; refuse it before a worker tries to decode it.
-            if pixels>Image.MAX_IMAGE_PIXELS: raise HTTPException(400,'Görsel en fazla 40 megapiksel olabilir.')
+            if pixels>settings.media_max_pixels: raise HTTPException(400,f'Görsel en fazla {settings.media_max_pixels//1_000_000} megapiksel olabilir.')
         except HTTPException: raise
         except Exception:
             with path.open('rb') as f: header=f.read(32)

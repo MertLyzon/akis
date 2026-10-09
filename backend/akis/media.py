@@ -11,7 +11,7 @@ from .security import sign
 from .errors import PlatformError
 
 pillow_heif.register_heif_opener()
-Image.MAX_IMAGE_PIXELS = 40_000_000
+Image.MAX_IMAGE_PIXELS = settings.media_max_pixels
 
 def path_for(key):
     root=Path(settings.media_root).resolve()
@@ -43,7 +43,7 @@ def ffmpeg():
     return imageio_ffmpeg.get_ffmpeg_exe()
 
 def run_ffmpeg(args):
-    result=subprocess.run([ffmpeg(),'-hide_banner','-nostdin','-y',*args],capture_output=True,timeout=420)
+    result=subprocess.run([ffmpeg(),'-hide_banner','-nostdin','-y',*args],capture_output=True,timeout=max(30,settings.ffmpeg_timeout_seconds))
     if result.returncode: raise PlatformError('media','conversion','Medya dönüştürülemedi. Dosyanın açılabildiğini kontrol edip yeniden yükle.')
 
 def probe(path):
@@ -92,11 +92,11 @@ def transcode(source,target,vertical=False,still=False):
         args=['-loop','1','-i',str(source),'-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000','-t','4','-vf',vf,'-map','0:v:0','-map','1:a:0']
     else:
         w,h,duration,audio=probe(source)
-        if duration>600 or w*h>40_000_000: raise PlatformError('media','video_limit','Video en fazla 10 dakika ve 40 megapiksel olabilir.')
+        if duration>settings.media_max_duration_seconds or w*h>settings.media_max_pixels: raise PlatformError('media','video_limit','Video izin verilen süre veya çözünürlük sınırını aşıyor.')
         args=['-protocol_whitelist','file,pipe','-i',str(source)]
         if not audio: args+=['-f','lavfi','-i','anullsrc=channel_layout=stereo:sample_rate=48000']
         args+=['-vf',vf,'-map','0:v:0','-map','0:a:0' if audio else '1:a:0','-t',str(duration)]
-    run_ffmpeg(args+['-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-r','30','-c:a','aac','-b:a','128k','-movflags','+faststart','-threads','2',str(target)])
+    run_ffmpeg(args+['-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-r','30','-c:a','aac','-b:a','128k','-movflags','+faststart','-threads',str(max(1,min(settings.ffmpeg_threads,2))),str(target)])
     return probe(target)
 
 def process_asset(asset_id):
