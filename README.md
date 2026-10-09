@@ -86,6 +86,13 @@ tek eşzamanlı düşük bellekli Celery worker ve Celery Beat süreçlerini bir
 yeniden başlatılır. Bu düzen tek API replikası içindir; API yatay ölçeklenecekse
 worker ve Beat yeniden ayrı servislere taşınmalıdır.
 
+`/api/health` hafif canlılık kontrolüdür. `/api/ready` ise veritabanını, Redis'i,
+medya depolamasını ve Worker/Beat süreçlerinin Redis'e yazdığı kısa ömürlü
+heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503 döner.
+Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında gösterir.
+Belleği sınırlı barındırma ortamlarında FFmpeg varsayılan olarak tek thread kullanır;
+süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlanabilir.
+
 Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adiniz` ve `PUBLIC_BASE_URL=https://kendi-alan-adiniz` ekleyin, servisleri yeniden oluşturun. Compose web portu 127.0.0.1:8080'e bağlıdır; HTTPS proxy bu porta yönlenmelidir. LOCAL_MODE üretimde false kalmalıdır. Bu paket sunucuya otomatik yayımlanmış değildir.
 
 Yerel SQLite veritabanı ve Compose PostgreSQL veritabanı ayrıdır. Docker ilk açılışta boş çalışma alanı oluşturur; yerel kayıtları veya medyayı kendiliğinden taşımaz. Geçiş yapmadan önce yedek alın; mevcut yerel uygulama kullanılmaya devam edilebilir.

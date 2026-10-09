@@ -49,7 +49,13 @@ Object.assign(english,{
   'Hazırla · planla · yayınla':'Create · schedule · publish',
   'Yeni paylaşım':'New post',
   'Taslak bu cihazda saklandı':'Draft saved on this device',
-  'Taslak kaydediliyor…':'Saving draft…'
+  'Taslak kaydediliyor…':'Saving draft…',
+  'Kuyruk bağlantısı':'Queue connection',
+  'Arka plan işleyicisi':'Background worker',
+  'Zamanlayıcı':'Scheduler',
+  '{seconds} saniye önce sinyal verdi':'Last signal {seconds} seconds ago',
+  'Henüz sinyal alınmadı':'No signal received yet',
+  'Ayrı worker kullanılmıyor':'No separate worker is used'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}
