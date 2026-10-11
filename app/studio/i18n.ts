@@ -56,7 +56,11 @@ Object.assign(english,{
   '{seconds} saniye önce sinyal verdi':'Last signal {seconds} seconds ago',
   'Henüz sinyal alınmadı':'No signal received yet',
   'Ayrı worker kullanılmıyor':'No separate worker is used'
-  ,'Otomatik yedek varsayılan olarak haftada bir alınır, tamamı şifrelenir, geri yükleme testi yapılır ve son 3 doğrulanmış yedek saklanır. Cloudinary yapılandırılmışsa özel yedek kopyası yeniden dağıtımlardan etkilenmez. Geri yüklemek için aynı CREDENTIAL_KEY gerekir.':'By default, an automatic backup is created weekly, fully encrypted, restore-tested, and the latest 3 verified backups are retained. When Cloudinary is configured, the private backup copy survives redeployments. Restoring requires the same CREDENTIAL_KEY.'
+  ,'Otomatik yedekleme {days} günde bir çalışır ve son {count} doğrulanmış yedek saklanır.':'Automatic backups run every {days} days and the latest {count} verified backups are retained.'
+  ,'Otomatik yedekleme kapalıdır; gerektiğinde aşağıdaki düğmeyle doğrulanmış yedek alabilirsin.':'Automatic backups are disabled; you can create a verified backup with the button below when needed.'
+  ,'Yedekler şifreli olarak özel bulutta saklanır.':'Backups are stored encrypted in the private cloud.'
+  ,'Yedekler şifreli olarak sunucu diskinde saklanır.':'Backups are stored encrypted on the server disk.'
+  ,'Geri yüklemek için aynı CREDENTIAL_KEY gerekir.':'Restoring requires the same CREDENTIAL_KEY.'
   ,'Konum':'Location','Yerel + özel bulut':'Local + private cloud','Özel bulut':'Private cloud','Yerel':'Local'
 });
 
