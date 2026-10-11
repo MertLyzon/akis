@@ -95,14 +95,37 @@ def test_waiting_polls_reuse_one_attempt(job,monkeypatch):
         run_delivery(identifier)
     with Session() as db: assert db.scalar(select(func.count()).select_from(DeliveryAttempt).where(DeliveryAttempt.delivery_id==identifier))==1
 
-def test_housekeeping_drops_expired_rows(client):
+def test_housekeeping_drops_expired_rows_and_old_terminal_attempts(client,job,monkeypatch):
+    from akis.config import settings
+    monkeypatch.setattr(settings,'delivery_attempt_retention_days',90)
+    delivery_id=job()
     with Session() as db:
+        old=now()-91*86400
         db.add(OAuthState(id='old',company_id='c',session_hash='h',platform='x',verifier='v',expires_at=now()-7200))
         db.add(OAuthState(id='live',company_id='c',session_hash='h',platform='x',verifier='v',expires_at=now()+600))
         db.add(AppSetting(key='login:lapsed',value=json.dumps({'count':3,'until':now()-10})))
         db.add(AppSetting(key='login:active',value=json.dumps({'count':3,'until':now()+600})))
+        db.add(DeliveryAttempt(id='old-finished',delivery_id=delivery_id,started_at=old,finished_at=old+1,outcome='failed'))
+        db.add(DeliveryAttempt(id='old-active',delivery_id=delivery_id,started_at=old,finished_at=None,outcome='running'))
+        db.add(DeliveryAttempt(id='recent-finished',delivery_id=delivery_id,started_at=now()-3600,finished_at=now()-3500,outcome='sent'))
         db.commit()
     housekeeping()
     with Session() as db:
         assert db.get(OAuthState,'old') is None and db.get(OAuthState,'live')
         assert db.get(AppSetting,'login:lapsed') is None and db.get(AppSetting,'login:active')
+        assert db.get(DeliveryAttempt,'old-finished') is None
+        assert db.get(DeliveryAttempt,'old-active') and db.get(DeliveryAttempt,'recent-finished')
+        assert int(db.get(AppSetting,'housekeeping:delivery-attempts').value)>0
+
+def test_delivery_attempt_cleanup_can_be_disabled(client,job,monkeypatch):
+    from akis.config import settings
+    monkeypatch.setattr(settings,'delivery_attempt_retention_days',0)
+    delivery_id=job()
+    with Session() as db:
+        old=now()-365*86400
+        db.add(DeliveryAttempt(id='retained',delivery_id=delivery_id,started_at=old,finished_at=old+1,outcome='failed'))
+        db.commit()
+    housekeeping()
+    with Session() as db:
+        assert db.get(DeliveryAttempt,'retained')
+        assert db.get(AppSetting,'housekeeping:delivery-attempts') is None

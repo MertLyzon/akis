@@ -103,13 +103,27 @@ def process_media(identifier): process_asset(identifier)
 def housekeeping():
     """Drop rows that only matter for minutes: used/expired OAuth states and lapsed login throttles."""
     with Session() as db:
-        db.execute(delete(OAuthState).where(OAuthState.expires_at<now()-3600))
+        current=now()
+        db.execute(delete(OAuthState).where(OAuthState.expires_at<current-3600))
         # Used, revoked or expired invitations stay 30 days for the admin's reference, then go.
-        db.execute(delete(Invitation).where(Invitation.expires_at<now()-30*86400))
+        db.execute(delete(Invitation).where(Invitation.expires_at<current-30*86400))
         for row in db.scalars(select(AppSetting).where(or_(AppSetting.key.startswith('login:'),AppSetting.key.startswith('login-account:')))):
-            try: lapsed=json.loads(row.value).get('until',0)<=now()
+            try: lapsed=json.loads(row.value).get('until',0)<=current
             except (ValueError,AttributeError): lapsed=True
             if lapsed: db.delete(row)
+        # Detailed retry diagnostics are useful while an incident is current, but unlike the post result they
+        # have no lasting business value. Bound this table without ever touching active/waiting attempts.
+        retention=max(0,settings.delivery_attempt_retention_days)
+        marker=db.get(AppSetting,'housekeeping:delivery-attempts')
+        try: last_cleanup=int(marker.value) if marker else 0
+        except (TypeError,ValueError): last_cleanup=0
+        if retention and last_cleanup<current-86400:
+            db.execute(delete(DeliveryAttempt).where(
+                DeliveryAttempt.started_at<current-retention*86400,
+                DeliveryAttempt.finished_at.is_not(None),
+                DeliveryAttempt.outcome.not_in(('running','waiting'))))
+            if marker: marker.value=str(current)
+            else: db.add(AppSetting(key='housekeeping:delivery-attempts',value=str(current)))
         db.commit()
 
 @celery.task(name='akis.refresh_tokens')
