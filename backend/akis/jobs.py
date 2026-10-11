@@ -121,11 +121,13 @@ def scheduled_backup():
     from .backup import create_verified_backup
     create_verified_backup()
 
-def ensure_local_daily_backup():
-    """Create a verified backup when local mode has no backup from the last 24 hours."""
+def ensure_local_periodic_backup():
+    """Create a verified local-mode backup after the configured interval."""
+    if settings.backup_interval_days<=0: return None
     from .backup import create_verified_backup, list_backups
     backups=list_backups()
-    if backups and backups[0]['created_at']>=int(time.time())-86400: return None
+    interval=settings.backup_interval_days*86400
+    if backups and backups[0]['created_at']>=int(time.time())-interval: return None
     return create_verified_backup()
 
 def enqueue_content(content_id):
@@ -164,6 +166,6 @@ def local_worker(stop):
                 if stop.is_set(): return
                 run_delivery(identifier)
             if time.monotonic()-last_refresh>300: housekeeping();refresh_due();last_refresh=time.monotonic()
-            if time.monotonic()-last_backup_check>300:
-                ensure_local_daily_backup();last_backup_check=time.monotonic()
+            if time.monotonic()-last_backup_check>3600:
+                ensure_local_periodic_backup();last_backup_check=time.monotonic()
         except Exception: log.error('Local background worker paused; retrying next cycle')
