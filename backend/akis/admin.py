@@ -14,6 +14,7 @@ from .db import Session
 from .models import Company, User, Membership, AuditLog, Content, ContentPlatform, MediaAsset, Credential, DeliveryAttempt, Invitation, now
 from .security import password_hash
 from .access import require, system_admin, audit, ROLE_NAMES
+from .config import settings
 from . import storage
 from .health import service_health
 
@@ -181,7 +182,11 @@ def system_overview(actor=Depends(system_admin)):
             for a,d,c in db.execute(select(DeliveryAttempt,ContentPlatform,Content).join(ContentPlatform,ContentPlatform.id==DeliveryAttempt.delivery_id).join(Content,Content.id==ContentPlatform.content_id)
                 .where(DeliveryAttempt.outcome.in_(('failed','unknown','retry'))).order_by(DeliveryAttempt.started_at.desc()).limit(50))]
         errors=dict(db.execute(select(ContentPlatform.error_code,func.count()).where(ContentPlatform.status.in_(('failed','unknown')),ContentPlatform.error_code.is_not(None)).group_by(ContentPlatform.error_code)).all())
-    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'health':service_health(),'backups':list_backups()[:20],'storage':'cloudinary' if storage.enabled() else 'local'}
+    backups=list_backups()[:20]
+    interval=max(0,settings.backup_interval_days)
+    backup_policy={'automatic':interval>0,'interval_days':interval,'keep':max(1,settings.backup_keep),
+        'remote':settings.backup_remote.strip().lower()!='local' and storage.enabled()}
+    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'health':service_health(),'backups':backups,'backup_policy':backup_policy,'storage':'cloudinary' if storage.enabled() else 'local'}
 
 class NewCompany(BaseModel):
     name:str=Field(min_length=1,max_length=120)

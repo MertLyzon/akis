@@ -117,6 +117,9 @@ def test_companies_are_isolated(client):
     assert client.get('/api/state',headers={'X-Akis-Company':b_company}).status_code==403
 
 def test_system_overview_never_exposes_secrets(client,job,monkeypatch):
+    from akis.config import settings
+    monkeypatch.setattr(settings,'backup_interval_days',0)
+    monkeypatch.setattr(settings,'backup_keep',2)
     identifier=job()
     assert client.post('/api/connections',json={'platform':'x','token':'very-secret-token','refresh_token':'very-secret-refresh'}).status_code==200
     client.post('/api/settings/oauth',json={'platform':'instagram','client_id':'cid','client_secret':'app-secret-value','redirect_uri':'http://localhost:5173/api/oauth/instagram/callback'})
@@ -128,6 +131,7 @@ def test_system_overview_never_exposes_secrets(client,job,monkeypatch):
     text=r.text
     for secret in ('very-secret-token','very-secret-refresh','app-secret-value'): assert secret not in text
     body=r.json();assert body['failures'][0]['error_code']=='403' and body['health']['database']
+    assert body['backup_policy']=={'automatic':False,'interval_days':0,'keep':2,'remote':False}
     audit=client.get('/api/audit').text
     for secret in ('very-secret-token','very-secret-refresh','app-secret-value'): assert secret not in audit
 
