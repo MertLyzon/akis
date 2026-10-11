@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     # auto uploads verified backups to private Cloudinary raw storage when configured.
     backup_remote: str = 'auto'
     backup_download_max_mb: int = 500
+    # Terminal delivery diagnostics older than this are pruned daily. 0 keeps them indefinitely.
+    delivery_attempt_retention_days: int = 90
     # Origins of the Tauri apps (desktop + mobile webviews). They authenticate with a bearer token, not cookies.
     app_client_origins: str = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420'
 

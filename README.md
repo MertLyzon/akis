@@ -168,6 +168,8 @@ Yerelde `.env` ve `data/` klasörünü; Docker'da PostgreSQL yedeğini, `media` 
 
 Her API isteği oturumdaki kullanıcıya ve seçili şirkete göre yetkilendirilir; başka şirketin içerik, medya veya bağlantısına erişim reddedilir. Sistem yöneticisi bir şirkete üye değilse o şirketin içeriğini göremez. TLS ve disk kotası işletmecinin kurulumuna bağlıdır.
 
+Veritabanının sınırsız büyümemesi için tamamlanmış gönderim denemelerinin ayrıntıları varsayılan olarak 90 gün tutulur ve günde en fazla bir kez temizlenir. İçeriğin kendisi, son kanal sonucu, dış platform gönderi kimliği ve işlem geçmişi korunur; çalışan veya platform yanıtı bekleyen denemeler silinmez. Süre `DELIVERY_ATTEMPT_RETENTION_DAYS` ile değiştirilebilir, `0` otomatik temizlemeyi kapatır.
+
 ## Geliştirme ve doğrulama
 
 Aktif kod: `app/page.tsx`, `app/studio/`, `backend/akis/`, `backend/migrations/`, `src-tauri/` (uygulama kabuğu), `.github/workflows/apps.yml` (uygulama derlemeleri). Önceki Cloudflare sürümünün yerel klasörde kalan dosyaları yeni sunucu tarafından kullanılmaz; dağıtım kaynağı paketi yalnızca yeni uygulamayı içerir.
