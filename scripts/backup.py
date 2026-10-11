@@ -1,6 +1,6 @@
 """Backups from the command line.
 
-  python scripts/backup.py create              # dump every table to backups/akis-*.json.gz and verify it
+  python scripts/backup.py create              # encrypt every table to backups/akis-*.json.gz.enc and verify it
   python scripts/backup.py verify FILE         # restore into a throwaway SQLite database and compare row counts
   python scripts/backup.py list
   python scripts/backup.py restore FILE URL    # load into an EMPTY database that already has the schema

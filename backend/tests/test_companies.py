@@ -224,7 +224,7 @@ def test_local_worker_creates_only_one_verified_daily_backup(client,tmp_path,mon
     from akis.config import settings
     monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
     first=jobs.ensure_local_daily_backup()
-    assert first and first['file'].endswith('.json.gz')
+    assert first and first['file'].endswith('.json.gz.enc')
     assert jobs.ensure_local_daily_backup() is None
     from akis.backup import verify_backup
     assert verify_backup(first['file'])['ok']

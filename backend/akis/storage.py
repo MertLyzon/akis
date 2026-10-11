@@ -38,7 +38,7 @@ def ping():
     import cloudinary.api
     return cloudinary.api.ping().get('status')=='ok'
 
-BACKUP_NAME=re.compile(r'^akis-\d{8}-\d{6}\.json\.gz$')
+BACKUP_NAME=re.compile(r'^akis-\d{8}-\d{6}\.json\.gz(?:\.enc)?$')
 BACKUP_PREFIX='akis-backups/'
 
 def backup_enabled():

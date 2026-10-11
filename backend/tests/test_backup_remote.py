@@ -1,5 +1,6 @@
-import shutil
+import base64,gzip,json,shutil
 from pathlib import Path
+import pytest
 
 from akis import backup,storage
 from akis.config import settings
@@ -31,7 +32,7 @@ def test_failed_verification_is_never_uploaded_or_retained(client,tmp_path,monke
         assert 'verification failed' in str(error)
     else:
         raise AssertionError('verification failure must abort the backup')
-    assert list(tmp_path.glob('akis-*.json.gz'))==[]
+    assert list(tmp_path.glob('akis-*.json.gz*'))==[]
 
 
 def test_remote_backup_can_be_verified_after_local_copy_is_lost(client,tmp_path,monkeypatch):
@@ -56,7 +57,7 @@ def test_backup_listing_merges_local_and_remote_locations(client,tmp_path,monkey
 
 
 def test_cloudinary_backup_upload_is_private_raw(tmp_path,monkeypatch):
-    path=tmp_path/'akis-20261009-120000.json.gz';path.write_bytes(b'archive')
+    path=tmp_path/'akis-20261009-120000.json.gz.enc';path.write_bytes(b'archive')
     calls=[]
     monkeypatch.setattr('cloudinary.uploader.upload',lambda *args,**kwargs:calls.append((args,kwargs)) or {'bytes':7})
     result=storage.upload_backup(path)
@@ -65,3 +66,28 @@ def test_cloudinary_backup_upload_is_private_raw(tmp_path,monkeypatch):
     assert args==(str(path),)
     assert options['resource_type']=='raw' and options['type']=='private'
     assert options['public_id']=='akis-backups/'+path.name
+
+
+def test_new_backup_is_fully_encrypted_and_authenticated(client,tmp_path,monkeypatch):
+    monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
+    result=backup.create_backup();path=tmp_path/result['file'];raw=path.read_bytes()
+    assert result['file'].endswith('.json.gz.enc') and raw.startswith(backup.MAGIC)
+    assert b'admin@akis.local' not in raw and b'"tables"' not in raw
+    assert backup.load(result['file'])['format']==backup.FORMAT
+    tampered=bytearray(raw);tampered[-1]^=1;path.write_bytes(tampered)
+    with pytest.raises(ValueError,match='authentication failed'): backup.load(result['file'])
+
+
+def test_encrypted_backup_requires_original_credential_key(client,tmp_path,monkeypatch):
+    monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
+    result=backup.create_backup()
+    monkeypatch.setattr(settings,'credential_key',base64.b64encode(b'x'*32).decode())
+    with pytest.raises(ValueError,match='authentication failed'): backup.load(result['file'])
+
+
+def test_legacy_gzip_backup_remains_readable(client,tmp_path,monkeypatch):
+    monkeypatch.setattr(settings,'backup_dir',str(tmp_path))
+    current=backup.create_backup();data=backup.load(current['file']);data['format']=backup.LEGACY_FORMAT
+    legacy=tmp_path/'akis-20200101-000000.json.gz'
+    legacy.write_bytes(gzip.compress(json.dumps(data).encode()))
+    assert backup.load(legacy)['counts']==data['counts']
