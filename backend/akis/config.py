@@ -30,7 +30,9 @@ class Settings(BaseSettings):
     # Keep processed files on local disk after uploading to Cloudinary (cache for workers on the same host).
     keep_local_media: bool = True
     backup_dir: str = str(ROOT / 'backups')
-    backup_keep: int = 14
+    # Set to 0 to disable scheduled backups while keeping manual backups available.
+    backup_interval_days: int = 7
+    backup_keep: int = 3
     # auto uploads verified backups to private Cloudinary raw storage when configured.
     backup_remote: str = 'auto'
     backup_download_max_mb: int = 500
