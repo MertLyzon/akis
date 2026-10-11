@@ -221,7 +221,7 @@ def run_backup(actor=Depends(system_admin)):
 @router.post('/api/system/backup/{name}/verify')
 def verify(name:str,actor=Depends(system_admin)):
     from .backup import verify_backup
-    if not re.fullmatch(r'akis-\d{8}-\d{6}\.json\.gz',name): raise HTTPException(400,'Geçersiz yedek adı.')
+    if not storage.BACKUP_NAME.fullmatch(name): raise HTTPException(400,'Geçersiz yedek adı.')
     try: return verify_backup(name)
     except FileNotFoundError: raise HTTPException(404,'Yedek bulunamadı.')
     except httpx.HTTPError: raise HTTPException(503,'Uzak yedek depolamasına ulaşılamadı.')

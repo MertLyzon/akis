@@ -458,18 +458,20 @@ def test_audit_pagination_150_entries_same_second(client):
 # ---------------- Backups ----------------
 
 def test_backup_tampering_and_names(client):
-    from akis.backup import backup_dir
+    from akis.backup import backup_dir,load
     client.post('/api/connections',json={'platform':'x','token':'BACKUP-PLAIN-TOKEN'})
     name=client.post('/api/system/backup').json()['file']
     raw=(backup_dir()/name).read_bytes()
-    assert b'BACKUP-PLAIN-TOKEN' not in gzip.decompress(raw)
+    assert b'BACKUP-PLAIN-TOKEN' not in raw and b'"tables"' not in raw
+    data=load(name)
+    assert b'BACKUP-PLAIN-TOKEN' not in json.dumps(data).encode()
     for bad in ('../.env','akis-20260101-000000.json.gz/../../x','..%2F..%2Fx','akis-2026.json.gz'):
         assert client.post(f'/api/system/backup/{bad}/verify').status_code in (400,404,405)
-    corrupt='akis-20200101-000000.json.gz';(backup_dir()/corrupt).write_bytes(raw[:len(raw)//2])
+    corrupt='akis-20200101-000000.json.gz.enc';(backup_dir()/corrupt).write_bytes(raw[:len(raw)//2])
     r=client.post(f'/api/system/backup/{corrupt}/verify');assert r.status_code==400 and 'Traceback' not in r.text
     notgz='akis-20200101-000001.json.gz';(backup_dir()/notgz).write_bytes(b'not gzip')
     assert client.post(f'/api/system/backup/{notgz}/verify').status_code==400
-    data=json.loads(gzip.decompress(raw));data['counts']['contents']=99
+    data['format']=1;data['counts']['contents']=99
     tampered='akis-20200101-000002.json.gz';(backup_dir()/tampered).write_bytes(gzip.compress(json.dumps(data).encode()))
     r=client.post(f'/api/system/backup/{tampered}/verify').json();assert not r['ok'] and 'contents' in r['mismatches']
     assert client.get('/backups/'+name).status_code==404 and client.get('/api/backups/'+name).status_code==404
