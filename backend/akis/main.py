@@ -295,6 +295,7 @@ def asset_json(a,db):
     return {'id':a.id,'filename':a.filename,'mime_type':a.mime_type,'width':a.width,'height':a.height,'duration_seconds':a.duration_seconds,'size':a.size,'status':a.status,'note':a.note,'error':a.error,'is_auto_generated':a.is_auto_generated,'folder':a.folder,'tags':a.tags or [],'archived':a.archived,'created_at':a.created_at,'stored':'cloudinary' if a.remote_url else 'local','url':media_url(a,db) if a.status=='ready' else None}
 
 ATTEMPTS_SHOWN=20
+STATE_RECENT_ASSETS=20
 def post_json(p,rows,attempts,attempt_totals,assets,people):
     return {'id':p.id,'text':p.body_text,'status':p.status,'created':p.created_at*1000,'platforms':p.platforms,'asset':assets.get(p.asset_id),'options':p.options,
         'scheduled_at':p.scheduled_at,'created_by':people.get(p.created_by,''),'approved_by':people.get(p.approved_by,''),'approved_at':p.approved_at,'review_note':p.review_note,
@@ -327,7 +328,15 @@ def state_json(actor):
             recent=aliased(DeliveryAttempt,ranked)
             for a in db.scalars(select(recent).where(ranked.c.attempt_rank<=ATTEMPTS_SHOWN).order_by(recent.delivery_id,recent.started_at.desc(),recent.id.desc())):
                 attempts.setdefault(a.delivery_id,[]).append(a)
-        assets={a.id:asset_json(a,db) for a in db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source').order_by(MediaAsset.created_at.desc()).limit(500))}
+        recent_assets=list(db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source',MediaAsset.archived==False).order_by(MediaAsset.created_at.desc(),MediaAsset.id.desc()).limit(STATE_RECENT_ASSETS)))
+        asset_models={a.id:a for a in recent_assets}
+        referenced_asset_ids={p.asset_id for p in posts if p.asset_id}
+        missing_asset_ids=referenced_asset_ids-set(asset_models)
+        extra_condition=MediaAsset.status.in_(('processing','converting'))
+        if missing_asset_ids: extra_condition=or_(MediaAsset.id.in_(missing_asset_ids),extra_condition)
+        for a in db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source',extra_condition)):
+            asset_models[a.id]=a
+        assets={identifier:asset_json(a,db) for identifier,a in asset_models.items()}
         people={u.id:(u.name or u.email) for u in db.scalars(select(User).join(Membership,Membership.user_id==User.id).where(Membership.company_id==cid))}
         apps=list(db.scalars(select(OAuthApp).where(OAuthApp.company_id==cid))) if actor.can('settings') else []
         return {'company':{'id':company.id,'name':company.name,'timezone':company.timezone,'require_approval':company.require_approval},

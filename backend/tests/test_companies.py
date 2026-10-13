@@ -164,6 +164,26 @@ def test_state_counts_all_attempts_but_only_returns_recent_history(client,job):
     assert len(delivery['attempts'])==20
     assert [a['started_at'] for a in delivery['attempts']]==list(range(24,4,-1))
 
+def test_state_only_embeds_recent_referenced_and_processing_assets(client,job):
+    identifier=job();asset_ids=[]
+    with Session() as db:
+        company=db.get(ContentPlatform,identifier).content_id
+        content=db.get(Content,company);company=content.company_id
+        for index in range(25):
+            asset=MediaAsset(company_id=company,uploaded_by=content.created_by,filename=f'{index}.jpg',storage_key=f'{index}.jpg',mime_type='image/jpeg',status='ready',created_at=index,updated_at=index)
+            db.add(asset);db.flush();asset_ids.append(asset.id)
+        content.asset_id=asset_ids[0]
+        db.get(MediaAsset,asset_ids[0]).archived=True
+        active=MediaAsset(company_id=company,uploaded_by=content.created_by,filename='active.jpg',storage_key='active.jpg',mime_type='image/jpeg',status='processing',created_at=-1,updated_at=-1)
+        db.add(active);db.commit();active_id=active.id
+    state=client.get('/api/state').json()
+    returned_ids={a['id'] for a in state['assets']}
+    assert len(returned_ids)==21
+    assert active_id in returned_ids
+    assert asset_ids[0] not in returned_ids
+    assert state['posts'][0]['asset']['id']==asset_ids[0]
+    assert not returned_ids.intersection(asset_ids[1:5])
+
 def test_scheduling_uses_company_timezone_and_waits(client,monkeypatch):
     client.post('/api/connections',json={'platform':'x','token':'fake'})
     client.patch('/api/company',json={'timezone':'America/New_York'})
