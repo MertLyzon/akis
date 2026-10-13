@@ -47,8 +47,34 @@ def test_crashed_worker_recovery(job):
 def test_dispatch_uses_platform_task(job,monkeypatch):
     identifier=job();calls=[]
     monkeypatch.setattr('akis.jobs.celery.send_task',lambda name,args: calls.append((name,args)))
-    dispatch()
+    dispatch();dispatch()
     assert calls==[('akis.send_to_x',[identifier])]
+    assert get(identifier).status=='queued'
+
+def test_worker_accepts_a_claimed_delivery(job,monkeypatch):
+    identifier=job();calls=[]
+    with Session() as db:
+        row=db.get(ContentPlatform,identifier);row.status='queued';db.commit()
+    monkeypatch.setattr('akis.tasks.x_publisher.request',lambda *a,**k: calls.append(a) or {'data':{'id':'tweet-queued'}})
+    run_delivery(identifier)
+    assert get(identifier).status=='sent' and len(calls)==1
+
+def test_broker_failure_releases_claim(job,monkeypatch):
+    identifier=job()
+    def unavailable(*args,**kwargs): raise ConnectionError('broker unavailable')
+    monkeypatch.setattr('akis.jobs.celery.send_task',unavailable)
+    dispatch()
+    assert get(identifier).status=='pending'
+
+def test_stale_broker_claims_are_recovered(job,client):
+    identifier=job()
+    with Session() as db:
+        delivery=db.get(ContentPlatform,identifier);delivery.status='queued';delivery.updated_at=now()-1000
+        company_id=db.scalar(select(Company.id));user_id=db.scalar(select(User.id))
+        asset=MediaAsset(id='stale-queued-asset',company_id=company_id,uploaded_by=user_id,filename='queued.jpg',storage_key='queued.jpg',mime_type='image/jpeg',status='queued',created_at=1000,updated_at=now()-1000)
+        db.add(asset);db.commit();recover_stale(db)
+    assert get(identifier).status=='pending'
+    with Session() as db: assert db.get(MediaAsset,'stale-queued-asset').status=='processing'
 
 def test_dispatch_prioritizes_oldest_due_work(client,monkeypatch):
     with Session() as db:
@@ -63,6 +89,6 @@ def test_dispatch_prioritizes_oldest_due_work(client,monkeypatch):
     deliveries=[];media=[]
     monkeypatch.setattr('akis.jobs.celery.send_task',lambda name,args: deliveries.append(args[0]))
     monkeypatch.setattr('akis.jobs.process_media.delay',lambda identifier: media.append(identifier))
-    dispatch()
-    assert deliveries==[f'delivery-{index:03}' for index in range(100)]
-    assert media==[f'asset-{index:03}' for index in range(20)]
+    dispatch();dispatch();dispatch()
+    assert deliveries==[f'delivery-{index:03}' for index in range(105)]
+    assert media==[f'asset-{index:03}' for index in range(25)]

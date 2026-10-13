@@ -172,10 +172,10 @@ def system_overview(actor=Depends(system_admin)):
             for c in db.scalars(select(Company).order_by(Company.name))]
         by_status=dict(db.execute(select(ContentPlatform.status,func.count()).group_by(ContentPlatform.status)).all())
         queue={'by_status':by_status,
-            'due_now':db.scalar(select(func.count()).select_from(ContentPlatform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now())) or 0,
+            'due_now':db.scalar(select(func.count()).select_from(ContentPlatform).where(or_(ContentPlatform.status=='queued',and_(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now())))) or 0,
             'scheduled':db.scalar(select(func.count()).select_from(ContentPlatform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at>now())) or 0,
             'stuck_sending':db.scalar(select(func.count()).select_from(ContentPlatform).where(ContentPlatform.status=='sending',ContentPlatform.updated_at<now()-900)) or 0,
-            'media_processing':db.scalar(select(func.count()).select_from(MediaAsset).where(MediaAsset.status.in_(('processing','converting')))) or 0,
+            'media_processing':db.scalar(select(func.count()).select_from(MediaAsset).where(MediaAsset.status.in_(('processing','queued','converting')))) or 0,
             'media_failed':db.scalar(select(func.count()).select_from(MediaAsset).where(MediaAsset.status=='failed')) or 0}
         names={c['id']:c['name'] for c in companies}
         failures=[{'at':a.finished_at or a.started_at,'company':names.get(c.company_id,''),'platform':d.platform,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message,'stage':a.stage}

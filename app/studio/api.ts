@@ -1,5 +1,5 @@
 export const platforms=[{id:'x',name:'X / Twitter',symbol:'𝕏',color:'#171c25',hint:'Metin, görsel ve video'},{id:'instagram',name:'Instagram',symbol:'◎',color:'#dc4369',hint:'Görsel ve Reels'},{id:'tiktok',name:'TikTok',symbol:'♪',color:'#171c25',hint:'Görselden video ve aktarım'},{id:'whatsapp',name:'WhatsApp',symbol:'◉',color:'#159467',hint:'Medya ve şablon mesajlar'}];
-export const statuses:Record<string,string>={draft:'Taslak',pending:'Sırada',sending:'Gönderiliyor',sent:'Yayımlandı',failed:'Başarısız',submitted:'Platforma iletildi',unknown:'Sonuç belirsiz'};
+export const statuses:Record<string,string>={draft:'Taslak',pending:'Sırada',queued:'Sırada',sending:'Gönderiliyor',sent:'Yayımlandı',failed:'Başarısız',submitted:'Platforma iletildi',unknown:'Sonuç belirsiz'};
 export const contentStatuses:Record<string,string>={draft:'Taslak',pending_approval:'Onay bekliyor',rejected:'Reddedildi',scheduled:'Planlandı',processing:'Gönderiliyor',completed:'Tamamlandı',attention:'Kontrol gerekiyor'};
 export const outcomes:Record<string,string>={running:'Sürüyor',sent:'Yayımlandı',submitted:'Platforma iletildi',waiting:'Platform işliyor',retry:'Tekrar denenecek',failed:'Başarısız',unknown:'Sonuç belirsiz'};
 export const stages:Record<string,string>={start:'Başlangıç',prepare:'Hazırlık',media_upload:'Medya yükleme',publish:'Yayımlama'};
