@@ -12,6 +12,7 @@ import logging
 import threading
 import time
 
+from . import release_info
 from . import storage
 from .config import settings
 from .db import engine
@@ -90,6 +91,7 @@ def service_health() -> dict:
         "queue_mode": settings.queue_mode,
         "database_kind": engine.dialect.name,
         "checked_at": checked_at,
+        "release": release_info(),
     }
     try:
         with engine.connect() as connection:
