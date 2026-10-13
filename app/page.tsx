@@ -25,8 +25,8 @@ const Account=lazy(()=>import('./studio/Account'));
 const empty={company:null,me:{role:null,permissions:[]},connections:[],posts:[],assets:[],settings:{oauth_apps:[],queue:'',app_origin:location.origin,max_upload_mb:100}};
 const ACTIVE_POLL_MS=4000,IDLE_POLL_MS=15000;
 function statePollInterval(snapshot:any,at=Math.floor(Date.now()/1000)){
-const activeAsset=snapshot.assets?.some((asset:any)=>['processing','converting'].includes(asset.status));
-const activeDelivery=snapshot.posts?.some((post:any)=>post.status==='processing'||post.deliveries?.some((delivery:any)=>delivery.status==='sending'||(delivery.status==='pending'&&delivery.next_attempt_at<=at+60)));
+const activeAsset=snapshot.assets?.some((asset:any)=>['processing','queued','converting'].includes(asset.status));
+const activeDelivery=snapshot.posts?.some((post:any)=>post.status==='processing'||post.deliveries?.some((delivery:any)=>['queued','sending'].includes(delivery.status)||(delivery.status==='pending'&&delivery.next_attempt_at<=at+60)));
 return activeAsset||activeDelivery?ACTIVE_POLL_MS:IDLE_POLL_MS;
 }
 export default function Home(){

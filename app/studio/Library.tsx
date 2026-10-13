@@ -11,7 +11,7 @@ const [items,setItems]=useState<any[]>([]),[folders,setFolders]=useState<string[
 useEffect(()=>{const id=setTimeout(()=>setSearch(q.trim()),300);return()=>clearTimeout(id)},[q]);
 const load=useCallback(async()=>{try{const r=await api('media?'+new URLSearchParams({folder,tag,q:search,archived:String(archived)}));setItems(r.items);setFolders(r.folders)}catch(e:any){toast.error(t(e.message))}finally{setLoading(false)}},[folder,tag,search,archived]);
 useEffect(()=>{load()},[load]);
-useEffect(()=>{if(!items.some(a=>['processing','converting'].includes(a.status)))return;const id=setTimeout(load,3000);return()=>clearTimeout(id)},[items,load]);
+useEffect(()=>{if(!items.some(a=>['processing','queued','converting'].includes(a.status)))return;const id=setTimeout(load,3000);return()=>clearTimeout(id)},[items,load]);
 async function save(a:any,changes:any,msg:string){try{await api('media/'+a.id,changes,'PATCH');toast.success(msg);load()}catch(e:any){toast.error(t(e.message))}}
 async function remove(a:any){if(!confirm(t('"{filename}" kalıcı olarak silinsin mi?',{filename:a.filename})))return;try{await api('media/'+a.id,{},'DELETE');toast.success(t('Medya silindi.'));load()}catch(e:any){toast.error(t(e.message))}}
 const tags=[...new Set(items.flatMap(a=>a.tags))].sort();

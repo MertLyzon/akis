@@ -1,5 +1,5 @@
 import importlib, json, logging, time
-from sqlalchemy import select, update, delete, or_
+from sqlalchemy import select, update, delete, or_, and_
 from .queue import celery
 from .db import Session
 from .models import Content,ContentPlatform,MediaAsset,Credential,Broadcast,DeliveryAttempt,OAuthState,AppSetting,Invitation,now
@@ -11,12 +11,13 @@ from .config import settings
 
 log=logging.getLogger(__name__)
 MODULES={'x':'x_publisher','instagram':'instagram_publisher','tiktok':'tiktok_publisher','whatsapp':'whatsapp_sender'}
+QUEUE_STALE_SECONDS=900
 
 def update_content(db,content_id):
     rows=list(db.scalars(select(ContentPlatform).where(ContentPlatform.content_id==content_id)))
     c=db.get(Content,content_id)
     if not c or not rows: return
-    c.status='processing' if any(r.status in ('pending','sending') for r in rows) else ('attention' if any(r.status in ('failed','unknown') for r in rows) else 'completed')
+    c.status='processing' if any(r.status in ('pending','queued','sending') for r in rows) else ('attention' if any(r.status in ('failed','unknown') for r in rows) else 'completed')
     b=db.scalar(select(Broadcast).where(Broadcast.content_id==content_id))
     if b:
         wa=[r for r in rows if r.platform=='whatsapp'];b.status='completed' if all(r.status in ('sent','submitted') for r in wa) else c.status
@@ -25,7 +26,11 @@ def update_content(db,content_id):
 
 def run_delivery(identifier):
     with Session() as db:
-        changed=db.execute(update(ContentPlatform).where(ContentPlatform.id==identifier,ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).values(status='sending',updated_at=now())).rowcount
+        current=now()
+        changed=db.execute(update(ContentPlatform).where(
+            ContentPlatform.id==identifier,
+            or_(ContentPlatform.status=='queued',and_(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=current))
+        ).values(status='sending',updated_at=current)).rowcount
         db.commit()
         if not changed: return
         delivery=db.get(ContentPlatform,identifier);content=db.get(Content,delivery.content_id)
@@ -79,6 +84,15 @@ def finish_attempt(db,attempt_id,delivery):
     db.commit()
 
 def recover_stale(db):
+    current=now()
+    # A broker can acknowledge enqueueing just before losing the task. Release those durable claims after a
+    # grace period; unlike an interrupted publish this is safe to retry because publishing never started.
+    queued=list(db.scalars(select(ContentPlatform).where(ContentPlatform.status=='queued',ContentPlatform.updated_at<current-QUEUE_STALE_SECONDS)))
+    for row in queued:
+        row.status='pending';row.next_attempt_at=min(row.next_attempt_at,current);row.updated_at=current
+    queued_media=list(db.scalars(select(MediaAsset).where(MediaAsset.status=='queued',MediaAsset.updated_at<current-QUEUE_STALE_SECONDS)))
+    for asset in queued_media:
+        asset.status='processing';asset.updated_at=current
     stale=list(db.scalars(select(ContentPlatform).where(ContentPlatform.status=='sending',ContentPlatform.updated_at<now()-900)))
     for row in stale:
         if row.final_request_started:
@@ -147,24 +161,63 @@ def ensure_local_periodic_backup():
 def enqueue_content(content_id):
     if settings.queue_mode!='celery': return
     with Session() as db:
-        jobs=list(db.execute(select(ContentPlatform.id,ContentPlatform.platform).where(ContentPlatform.content_id==content_id,ContentPlatform.status=='pending')))
+        jobs=claim_deliveries(db,content_id=content_id)
+    enqueue_deliveries(jobs)
+
+def claim_deliveries(db,limit=100,content_id=None):
+    """Move due outbox rows to a durable broker-bound state before publishing tasks."""
+    current=now()
+    query=select(ContentPlatform.id,ContentPlatform.platform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=current)
+    if content_id: query=query.where(ContentPlatform.content_id==content_id)
+    candidates=list(db.execute(query.order_by(ContentPlatform.next_attempt_at,ContentPlatform.id).limit(limit)))
+    claimed=[]
+    for identifier,platform in candidates:
+        changed=db.execute(update(ContentPlatform).where(
+            ContentPlatform.id==identifier,ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=current
+        ).values(status='queued',updated_at=current)).rowcount
+        if changed: claimed.append((identifier,platform))
+    db.commit()
+    return claimed
+
+def claim_media(db,limit=20):
+    current=now()
+    candidates=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').order_by(MediaAsset.created_at,MediaAsset.id).limit(limit)))
+    claimed=[]
+    for identifier in candidates:
+        changed=db.execute(update(MediaAsset).where(MediaAsset.id==identifier,MediaAsset.status=='processing').values(status='queued',updated_at=current)).rowcount
+        if changed: claimed.append(identifier)
+    db.commit()
+    return claimed
+
+def release_delivery(identifier):
+    with Session() as db:
+        db.execute(update(ContentPlatform).where(ContentPlatform.id==identifier,ContentPlatform.status=='queued').values(status='pending',updated_at=now()))
+        db.commit()
+
+def release_media(identifier):
+    with Session() as db:
+        db.execute(update(MediaAsset).where(MediaAsset.id==identifier,MediaAsset.status=='queued').values(status='processing',updated_at=now()))
+        db.commit()
+
+def enqueue_deliveries(jobs):
     for identifier,platform in jobs:
-        try:
-            module=importlib.import_module('akis.tasks.'+MODULES[platform])
-            getattr(module,'send_to_'+platform).delay(identifier)
+        try: celery.send_task('akis.send_to_'+platform,args=[identifier])
         except Exception:
-            # The committed outbox remains pending and Beat will recover it.
-            log.warning('Broker unavailable; content %s remains in outbox',content_id)
-            return
+            release_delivery(identifier)
+            log.warning('Broker unavailable; delivery %s returned to the outbox',identifier)
 
 @celery.task(name='akis.dispatch')
 def dispatch():
     with Session() as db:
         recover_stale(db)
-        media_ids=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').order_by(MediaAsset.created_at,MediaAsset.id).limit(20)))
-        jobs=list(db.execute(select(ContentPlatform.id,ContentPlatform.platform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).order_by(ContentPlatform.next_attempt_at,ContentPlatform.id).limit(100)))
-    for identifier in media_ids: process_media.delay(identifier)
-    for identifier,platform in jobs: celery.send_task('akis.send_to_'+platform,args=[identifier])
+        media_ids=claim_media(db)
+        jobs=claim_deliveries(db)
+    for identifier in media_ids:
+        try: process_media.delay(identifier)
+        except Exception:
+            release_media(identifier)
+            log.warning('Broker unavailable; media %s returned to the outbox',identifier)
+    enqueue_deliveries(jobs)
 
 def local_worker(stop):
     # Development fallback when Docker/Redis are unavailable; uses the same durable rows and publishers.

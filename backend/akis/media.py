@@ -101,7 +101,7 @@ def transcode(source,target,vertical=False,still=False):
 
 def process_asset(asset_id):
     with Session() as db:
-        claimed=db.execute(update(MediaAsset).where(MediaAsset.id==asset_id,MediaAsset.status=='processing').values(status='converting',updated_at=now())).rowcount
+        claimed=db.execute(update(MediaAsset).where(MediaAsset.id==asset_id,MediaAsset.status.in_(('processing','queued'))).values(status='converting',updated_at=now())).rowcount
         db.commit()
         if not claimed: return
         a=db.get(MediaAsset,asset_id)

@@ -332,7 +332,7 @@ def state_json(actor):
         asset_models={a.id:a for a in recent_assets}
         referenced_asset_ids={p.asset_id for p in posts if p.asset_id}
         missing_asset_ids=referenced_asset_ids-set(asset_models)
-        extra_condition=MediaAsset.status.in_(('processing','converting'))
+        extra_condition=MediaAsset.status.in_(('processing','queued','converting'))
         if missing_asset_ids: extra_condition=or_(MediaAsset.id.in_(missing_asset_ids),extra_condition)
         for a in db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source',extra_condition)):
             asset_models[a.id]=a
