@@ -1,6 +1,6 @@
 from sqlalchemy import select
 from akis.db import Session
-from akis.models import ContentPlatform,now
+from akis.models import Company,Content,ContentPlatform,MediaAsset,User,now
 from akis.jobs import run_delivery,recover_stale,dispatch
 from akis.errors import PlatformError
 
@@ -49,3 +49,20 @@ def test_dispatch_uses_platform_task(job,monkeypatch):
     monkeypatch.setattr('akis.jobs.celery.send_task',lambda name,args: calls.append((name,args)))
     dispatch()
     assert calls==[('akis.send_to_x',[identifier])]
+
+def test_dispatch_prioritizes_oldest_due_work(client,monkeypatch):
+    with Session() as db:
+        company_id=db.scalar(select(Company.id));user_id=db.scalar(select(User.id))
+        for index in range(105):
+            content=Content(id=f'content-{index:03}',company_id=company_id,created_by=user_id,body_text='queued',platforms=['x'],status='processing')
+            db.add(content);db.flush()
+            db.add(ContentPlatform(id=f'delivery-{index:03}',content_id=content.id,platform='x',status='pending',next_attempt_at=1000+index))
+        for index in range(25):
+            db.add(MediaAsset(id=f'asset-{index:03}',company_id=company_id,uploaded_by=user_id,filename='queued.jpg',storage_key='queued.jpg',mime_type='image/jpeg',status='processing',created_at=1000+index,updated_at=1000+index))
+        db.commit()
+    deliveries=[];media=[]
+    monkeypatch.setattr('akis.jobs.celery.send_task',lambda name,args: deliveries.append(args[0]))
+    monkeypatch.setattr('akis.jobs.process_media.delay',lambda identifier: media.append(identifier))
+    dispatch()
+    assert deliveries==[f'delivery-{index:03}' for index in range(100)]
+    assert media==[f'asset-{index:03}' for index in range(20)]
