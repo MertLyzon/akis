@@ -153,6 +153,17 @@ def test_delivery_attempts_are_recorded(job,monkeypatch):
     assert outcomes==['retry','sent'] and all(a.finished_at for a in attempts)
     assert next(a for a in attempts if a.outcome=='retry').error_code=='503'
 
+def test_state_counts_all_attempts_but_only_returns_recent_history(client,job):
+    identifier=job()
+    with Session() as db:
+        for started_at in range(25):
+            db.add(DeliveryAttempt(delivery_id=identifier,started_at=started_at,finished_at=started_at+1,stage='publish',outcome='retry'))
+        db.commit()
+    delivery=client.get('/api/state').json()['posts'][0]['deliveries'][0]
+    assert delivery['attempts_total']==25
+    assert len(delivery['attempts'])==20
+    assert [a['started_at'] for a in delivery['attempts']]==list(range(24,4,-1))
+
 def test_scheduling_uses_company_timezone_and_waits(client,monkeypatch):
     client.post('/api/connections',json={'platform':'x','token':'fake'})
     client.patch('/api/company',json={'timezone':'America/New_York'})

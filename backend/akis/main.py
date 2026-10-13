@@ -15,6 +15,7 @@ from pydantic import BaseModel,Field
 from typing import Literal
 from sqlalchemy import select,update,delete,func,or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import aliased
 from .config import settings
 from .db import Session
 from .models import Content,ContentPlatform,Credential,MediaAsset,OAuthApp,AppSetting,Broadcast,DeliveryAttempt,Company,User,Membership,Invitation,now
@@ -294,12 +295,12 @@ def asset_json(a,db):
     return {'id':a.id,'filename':a.filename,'mime_type':a.mime_type,'width':a.width,'height':a.height,'duration_seconds':a.duration_seconds,'size':a.size,'status':a.status,'note':a.note,'error':a.error,'is_auto_generated':a.is_auto_generated,'folder':a.folder,'tags':a.tags or [],'archived':a.archived,'created_at':a.created_at,'stored':'cloudinary' if a.remote_url else 'local','url':media_url(a,db) if a.status=='ready' else None}
 
 ATTEMPTS_SHOWN=20
-def post_json(p,rows,attempts,assets,people):
+def post_json(p,rows,attempts,attempt_totals,assets,people):
     return {'id':p.id,'text':p.body_text,'status':p.status,'created':p.created_at*1000,'platforms':p.platforms,'asset':assets.get(p.asset_id),'options':p.options,
         'scheduled_at':p.scheduled_at,'created_by':people.get(p.created_by,''),'approved_by':people.get(p.approved_by,''),'approved_at':p.approved_at,'review_note':p.review_note,
         'deliveries':[{'id':r.id,'platform':r.platform,'recipient':r.recipient,'status':r.status,'error':r.error_message,'error_code':r.error_code,'externalId':r.external_post_id,'retry_count':r.retry_count,'next_attempt_at':r.next_attempt_at,'sent_at':r.sent_at,'media_note':r.progress.get('media_note'),
-            'attempts_total':len(attempts.get(r.id,[])),
-            'attempts':[{'started_at':a.started_at,'finished_at':a.finished_at,'stage':a.stage,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message} for a in attempts.get(r.id,[])[:ATTEMPTS_SHOWN]]} for r in rows.get(p.id,[])]}
+            'attempts_total':attempt_totals.get(r.id,0),
+            'attempts':[{'started_at':a.started_at,'finished_at':a.finished_at,'stage':a.stage,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message} for a in attempts.get(r.id,[])]} for r in rows.get(p.id,[])]}
 
 @app.get('/api/state')
 def state(req:Request,actor=Depends(require('read'))):
@@ -319,9 +320,12 @@ def state_json(actor):
         ids=[p.id for p in posts]
         rows={}
         for r in (db.scalars(select(ContentPlatform).where(ContentPlatform.content_id.in_(ids))) if ids else []): rows.setdefault(r.content_id,[]).append(r)
-        attempts={};delivery_ids=[r.id for group in rows.values() for r in group]
+        attempts={};attempt_totals={};delivery_ids=[r.id for group in rows.values() for r in group]
         if delivery_ids:
-            for a in db.scalars(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id.in_(delivery_ids)).order_by(DeliveryAttempt.started_at.desc())):
+            attempt_totals=dict(db.execute(select(DeliveryAttempt.delivery_id,func.count()).where(DeliveryAttempt.delivery_id.in_(delivery_ids)).group_by(DeliveryAttempt.delivery_id)).all())
+            ranked=select(DeliveryAttempt,func.row_number().over(partition_by=DeliveryAttempt.delivery_id,order_by=(DeliveryAttempt.started_at.desc(),DeliveryAttempt.id.desc())).label('attempt_rank')).where(DeliveryAttempt.delivery_id.in_(delivery_ids)).subquery()
+            recent=aliased(DeliveryAttempt,ranked)
+            for a in db.scalars(select(recent).where(ranked.c.attempt_rank<=ATTEMPTS_SHOWN).order_by(recent.delivery_id,recent.started_at.desc(),recent.id.desc())):
                 attempts.setdefault(a.delivery_id,[]).append(a)
         assets={a.id:asset_json(a,db) for a in db.scalars(select(MediaAsset).where(MediaAsset.company_id==cid,MediaAsset.variant=='source').order_by(MediaAsset.created_at.desc()).limit(500))}
         people={u.id:(u.name or u.email) for u in db.scalars(select(User).join(Membership,Membership.user_id==User.id).where(Membership.company_id==cid))}
@@ -329,7 +333,7 @@ def state_json(actor):
         return {'company':{'id':company.id,'name':company.name,'timezone':company.timezone,'require_approval':company.require_approval},
         'me':{'role':actor.role,'permissions':sorted(PERMISSIONS[actor.role])},
         'connections':[{'id':c.id,'platform':c.platform,'account':c.account_id,'label':c.account_label,'expires_at':c.expires_at,'refresh_expires_at':c.refresh_expires_at,'can_refresh':can_refresh(c),'refresh_error':c.refresh_error,'token_kind':c.token_kind,'days_left':math.ceil((c.expires_at-now())/86400) if c.expires_at else None,'has_refresh':bool(c.refresh_token),'connected_by':people.get(c.connected_by,'')} for c in creds],
-        'posts':[post_json(p,rows,attempts,assets,people) for p in posts],
+        'posts':[post_json(p,rows,attempts,attempt_totals,assets,people) for p in posts],
         'assets':[a for a in assets.values() if not a['archived']],
         'settings':{'public_base_url':public_base(db),'app_origin':settings.app_origin,'queue':settings.queue_mode,'storage':'cloudinary' if storage.enabled() else 'local','max_upload_mb':settings.max_upload_mb,'oauth_apps':[{'platform':a.platform,'client_id':a.client_id,'has_secret':bool(a.client_secret),'redirect_uri':a.redirect_uri,'mode':a.mode} for a in apps]}}
 
