@@ -90,8 +90,15 @@ worker ve Beat yeniden ayrı servislere taşınmalıdır.
 medya depolamasını ve Worker/Beat süreçlerinin Redis'e yazdığı kısa ömürlü
 heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503 döner.
 Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında gösterir.
+Canlı sürüm kimliği `/api/health` ve Sistem Yönetimi ekranında görünür. Northflank
+dağıtımlarında commit otomatik `NF_DEPLOYMENT_SHA` üzerinden okunur; başka bir
+ortamda gerekirse salt okunur `AKIS_BUILD_SHA` değişkeni verilebilir.
 Belleği sınırlı barındırma ortamlarında FFmpeg varsayılan olarak tek thread kullanır;
 süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlanabilir.
+
+Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
+komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
+kurmak gerekir; testler gerçek uygulama veritabanına veya medya klasörüne yazmaz.
 
 Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adiniz` ve `PUBLIC_BASE_URL=https://kendi-alan-adiniz` ekleyin, servisleri yeniden oluşturun. Compose web portu 127.0.0.1:8080'e bağlıdır; HTTPS proxy bu porta yönlenmelidir. LOCAL_MODE üretimde false kalmalıdır. Bu paket sunucuya otomatik yayımlanmış değildir.
 

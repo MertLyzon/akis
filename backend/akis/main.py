@@ -16,6 +16,7 @@ from typing import Literal
 from sqlalchemy import select,update,delete,func,or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
+from . import release_info
 from .config import settings
 from .db import Session
 from .models import Content,ContentPlatform,Credential,MediaAsset,OAuthApp,AppSetting,Broadcast,DeliveryAttempt,Company,User,Membership,Invitation,now
@@ -108,7 +109,7 @@ def set_session(response,user,req=None):
     response.set_cookie('akis_session',token,httponly=True,samesite='lax',secure=settings.app_origin.startswith('https'),max_age=43200)
 
 @app.get('/api/health')
-def health(): return {'ok':True,'queue':settings.queue_mode}
+def health(): return {'ok':True,'queue':settings.queue_mode,'release':release_info()}
 
 @app.get('/api/ready')
 def readiness():

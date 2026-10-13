@@ -2,6 +2,7 @@ import time
 
 import fakeredis
 
+from akis import release_info
 from akis.config import settings
 from akis.health import heartbeat_key,is_ready,service_health,write_heartbeat
 
@@ -39,3 +40,16 @@ def test_readiness_rejects_a_stale_queue(client,monkeypatch):
 
 def test_local_mode_does_not_require_redis_or_queue_processes():
     assert is_ready({'database':True,'storage':None,'queue_mode':'local'})
+
+
+def test_release_info_uses_and_sanitizes_deployment_sha(monkeypatch):
+    monkeypatch.setenv('NF_DEPLOYMENT_SHA','ABCDEF0123456789')
+    assert release_info()=={'version':'0.4.0','commit':'abcdef012345'}
+    monkeypatch.setenv('NF_DEPLOYMENT_SHA','not-a-commit-or-secret')
+    assert release_info()=={'version':'0.4.0','commit':''}
+
+
+def test_liveness_exposes_public_release_identity(client):
+    response=client.get('/api/health')
+    assert response.status_code==200
+    assert response.json()['release']['version']=='0.4.0'

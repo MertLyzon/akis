@@ -56,6 +56,7 @@ Object.assign(english,{
   '{seconds} saniye önce sinyal verdi':'Last signal {seconds} seconds ago',
   'Henüz sinyal alınmadı':'No signal received yet',
   'Ayrı worker kullanılmıyor':'No separate worker is used'
+  ,'Çalışan sürüm':'Running version','Yayındaki commit':'Deployed commit','Yerel yapı':'Local build'
   ,'Otomatik yedekleme {days} günde bir çalışır ve son {count} doğrulanmış yedek saklanır.':'Automatic backups run every {days} days and the latest {count} verified backups are retained.'
   ,'Otomatik yedekleme kapalıdır; gerektiğinde aşağıdaki düğmeyle doğrulanmış yedek alabilirsin.':'Automatic backups are disabled; you can create a verified backup with the button below when needed.'
   ,'Yedekler şifreli olarak özel bulutta saklanır.':'Backups are stored encrypted in the private cloud.'
