@@ -31,7 +31,7 @@ def run_delivery(identifier):
         delivery=db.get(ContentPlatform,identifier);content=db.get(Content,delivery.content_id)
         # Polling a platform that is still processing (Instagram/TikTok/X, every 10–60 s) continues the
         # same attempt instead of adding a row per poll; a day of waiting would otherwise be thousands of rows.
-        attempt=db.scalar(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id==identifier).order_by(DeliveryAttempt.started_at.desc()).limit(1))
+        attempt=db.scalar(select(DeliveryAttempt).where(DeliveryAttempt.delivery_id==identifier).order_by(DeliveryAttempt.started_at.desc(),DeliveryAttempt.id.desc()).limit(1))
         if attempt and attempt.outcome=='waiting': attempt.outcome='running';attempt.finished_at=None
         else: attempt=DeliveryAttempt(delivery_id=identifier,stage='start');db.add(attempt)
         db.commit();attempt_id=attempt.id
@@ -161,8 +161,8 @@ def enqueue_content(content_id):
 def dispatch():
     with Session() as db:
         recover_stale(db)
-        media_ids=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').limit(20)))
-        jobs=list(db.execute(select(ContentPlatform.id,ContentPlatform.platform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).limit(100)))
+        media_ids=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').order_by(MediaAsset.created_at,MediaAsset.id).limit(20)))
+        jobs=list(db.execute(select(ContentPlatform.id,ContentPlatform.platform).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).order_by(ContentPlatform.next_attempt_at,ContentPlatform.id).limit(100)))
     for identifier in media_ids: process_media.delay(identifier)
     for identifier,platform in jobs: celery.send_task('akis.send_to_'+platform,args=[identifier])
 
@@ -173,8 +173,8 @@ def local_worker(stop):
         try:
             with Session() as db:
                 recover_stale(db)
-                media_ids=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').limit(3)))
-                ids=list(db.scalars(select(ContentPlatform.id).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).limit(10)))
+                media_ids=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').order_by(MediaAsset.created_at,MediaAsset.id).limit(3)))
+                ids=list(db.scalars(select(ContentPlatform.id).where(ContentPlatform.status=='pending',ContentPlatform.next_attempt_at<=now()).order_by(ContentPlatform.next_attempt_at,ContentPlatform.id).limit(10)))
             for identifier in media_ids: process_asset(identifier)
             for identifier in ids:
                 if stop.is_set(): return
