@@ -68,6 +68,10 @@ Object.assign(english,{
   ,'Yalnızca bu servis çalışmaya başladığından beri oluşan beklenmeyen hatalar gösterilir. Liste yeniden başlatmada temizlenir.':'Only unexpected errors since this service started are shown. The list is cleared on restart.'
   ,'Beklenmeyen API hatası yok.':'No unexpected API errors.'
   ,'Yöntem':'Method','Yol':'Path'
+  ,'Tüm sistemler sağlıklı':'All systems healthy','Kritik servis sorunu':'Critical service issue','Dikkat gerektiren durumlar':'Items requiring attention'
+  ,'Gönderim altyapısı ve bağımlılıklar normal çalışıyor.':'Delivery infrastructure and dependencies are operating normally.'
+  ,'Veritabanına ulaşılamıyor':'Database is unavailable','Redis bağlantısı yok':'Redis connection is unavailable','Arka plan işleyicisi çalışmıyor':'Background worker is not running','Zamanlayıcı çalışmıyor':'Scheduler is not running','Medya depolamasına ulaşılamıyor':'Media storage is unavailable'
+  ,'Takılı gönderim':'Stuck delivery','Hatalı medya':'Failed media','Son 15 dakikadaki API hatası':'API error in the last 15 minutes'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}

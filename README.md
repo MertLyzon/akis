@@ -90,6 +90,8 @@ worker ve Beat yeniden ayrı servislere taşınmalıdır.
 medya depolamasını ve Worker/Beat süreçlerinin Redis'e yazdığı kısa ömürlü
 heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503 döner.
 Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında gösterir.
+Ekranın üstündeki işletim özeti kritik bağımlılık kesintilerini; takılı gönderimleri,
+hatalı medyayı ve son 15 dakikadaki API hatalarını tek bakışta ayrıca işaretler.
 Canlı sürüm kimliği `/api/health` ve Sistem Yönetimi ekranında görünür. Northflank
 dağıtımlarında commit otomatik `NF_DEPLOYMENT_SHA` üzerinden okunur; başka bir
 ortamda gerekirse salt okunur `AKIS_BUILD_SHA` değişkeni verilebilir.

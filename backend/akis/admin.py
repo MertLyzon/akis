@@ -17,7 +17,7 @@ from .access import require, system_admin, audit, ROLE_NAMES
 from .config import settings
 from . import storage
 from .health import service_health
-from .diagnostics import recent_api_errors
+from .diagnostics import operational_summary, recent_api_errors
 
 router=APIRouter()
 Role=Literal['admin','approver','editor','viewer']
@@ -187,7 +187,8 @@ def system_overview(actor=Depends(system_admin)):
     interval=max(0,settings.backup_interval_days)
     backup_policy={'automatic':interval>0,'interval_days':interval,'keep':max(1,settings.backup_keep),
         'remote':settings.backup_remote.strip().lower()!='local' and storage.enabled()}
-    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'api_errors':recent_api_errors(),'health':service_health(),'backups':backups,'backup_policy':backup_policy,'storage':'cloudinary' if storage.enabled() else 'local'}
+    api_errors=recent_api_errors();health=service_health()
+    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'api_errors':api_errors,'health':health,'operational':operational_summary(health,queue,api_errors),'backups':backups,'backup_policy':backup_policy,'storage':'cloudinary' if storage.enabled() else 'local'}
 
 class NewCompany(BaseModel):
     name:str=Field(min_length=1,max_length=120)
