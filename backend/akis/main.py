@@ -1,4 +1,4 @@
-import hashlib,hmac,json,math,re,threading,time
+import hashlib,hmac,json,logging,math,re,threading,time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +30,7 @@ from . import storage
 from .health import is_ready,service_health
 
 Platform=Literal['x','instagram','tiktok','whatsapp']
+log=logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app):
@@ -89,7 +90,17 @@ async def guards(req,call_next):
     return response
 
 # Native apps call the API cross-origin with a bearer token; no cookies are shared with them.
-app.add_middleware(CORSMiddleware,allow_origins=sorted(APP_ORIGINS),allow_credentials=False,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Akis-Company','X-Akis-Client','If-None-Match'],expose_headers=['ETag'],max_age=3600)
+app.add_middleware(CORSMiddleware,allow_origins=sorted(APP_ORIGINS),allow_credentials=False,allow_methods=['GET','POST','PUT','PATCH','DELETE'],allow_headers=['Authorization','Content-Type','X-Akis-Company','X-Akis-Client','If-None-Match'],expose_headers=['ETag','X-Request-ID'],max_age=3600)
+
+@app.middleware('http')
+async def request_identity(req,call_next):
+    # Generate this server-side: an attacker cannot inject arbitrary text into logs
+    # or make two unrelated requests appear to have the same identity.
+    request_id=uuid4().hex[:12]
+    req.state.request_id=request_id
+    response=await call_next(req)
+    response.headers['X-Request-ID']=request_id
+    return response
 
 @app.exception_handler(HTTPException)
 async def http_error(req,exc):
@@ -99,6 +110,11 @@ async def http_error(req,exc):
 async def validation_error(req,exc): return JSONResponse({'error':'Alanları kontrol et: '+', '.join('.'.join(map(str,e['loc'][1:])) for e in exc.errors())},422)
 @app.exception_handler(PlatformError)
 async def platform_error(req,exc): return JSONResponse({'error':exc.message,'code':exc.code},400)
+@app.exception_handler(Exception)
+async def unexpected_error(req,exc):
+    support_code=getattr(req.state,'request_id',uuid4().hex[:12])
+    log.error('Unhandled request error support_code=%s method=%s path=%s',support_code,req.method,req.url.path,exc_info=(type(exc),exc,exc.__traceback__))
+    return JSONResponse({'error':'İşlem tamamlanamadı.','support_code':support_code},500,headers={'X-Request-ID':support_code})
 
 def set_session(response,user,req=None):
     token=make_user_session(user.id,user.session_version)
