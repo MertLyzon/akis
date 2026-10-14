@@ -144,6 +144,8 @@ select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px soli
 .health small{color:#62677a;font-size:12px}
 .health.ok svg{color:#1f6e50}.health.bad svg{color:#c24d4d}.health.off svg{color:#b6bac8}
 .health.bad{background:#fff6f6;border-color:#f6d6d6}
+.operational-summary{display:flex;align-items:flex-start;gap:11px;border:1px solid #cde9da;border-radius:10px;padding:15px 17px;margin:14px 0 22px;background:#f2fbf6;color:#276849}
+.operational-summary>svg{flex-shrink:0;margin-top:1px}.operational-summary>div{display:grid;gap:9px}.operational-summary strong{font-size:14px}.operational-summary small{font-size:12px}.operational-summary.warning{background:#fff9e8;border-color:#f0dfaa;color:#80651d}.operational-summary.critical{background:#fff1f1;border-color:#efc9cd;color:#a14750}.operational-summary .pill{background:#ffffffa8;color:inherit}
 .totp-setup ol{padding-left:18px;display:grid;gap:10px;font-size:14px;color:#5d6378;line-height:1.7}
 .totp-secret{font-size:15px;letter-spacing:1px;background:#f3f2fb;padding:4px 8px;border-radius:6px;user-select:all;word-break:break-all}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(2,1fr)}}
