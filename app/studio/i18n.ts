@@ -64,6 +64,10 @@ Object.assign(english,{
   ,'Geri yüklemek için aynı CREDENTIAL_KEY gerekir.':'Restoring requires the same CREDENTIAL_KEY.'
   ,'Konum':'Location','Yerel + özel bulut':'Local + private cloud','Özel bulut':'Private cloud','Yerel':'Local'
   ,'Destek kodu':'Support code'
+  ,'Son API hataları':'Recent API errors'
+  ,'Yalnızca bu servis çalışmaya başladığından beri oluşan beklenmeyen hatalar gösterilir. Liste yeniden başlatmada temizlenir.':'Only unexpected errors since this service started are shown. The list is cleared on restart.'
+  ,'Beklenmeyen API hatası yok.':'No unexpected API errors.'
+  ,'Yöntem':'Method','Yol':'Path'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}

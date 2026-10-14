@@ -95,7 +95,10 @@ dağıtımlarında commit otomatik `NF_DEPLOYMENT_SHA` üzerinden okunur; başka
 ortamda gerekirse salt okunur `AKIS_BUILD_SHA` değişkeni verilebilir.
 Her HTTP yanıtı `X-Request-ID` başlığı taşır. Beklenmeyen bir sunucu hatasında
 kullanıcıya gösterilen destek kodu aynı kimliktir; ayrıntılı hata yalnız sunucu
-loguna, istek gövdesi ve sorgu parametreleri yazılmadan kaydedilir.
+loguna, istek gövdesi ve sorgu parametreleri yazılmadan kaydedilir. Son 20
+beklenmeyen hatanın zamanı, destek kodu, HTTP yöntemi ve güvenli yolu Sistem
+Yönetimi ekranında yalnızca süreç belleğinde tutulur. Bu liste veritabanını veya
+kalıcı depolamayı büyütmez ve API yeniden başladığında temizlenir.
 Belleği sınırlı barındırma ortamlarında FFmpeg varsayılan olarak tek thread kullanır;
 süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlanabilir.
 
