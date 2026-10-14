@@ -1,6 +1,7 @@
 import time
 
 import fakeredis
+from fastapi.testclient import TestClient
 
 from akis import release_info
 from akis.config import settings
@@ -53,3 +54,17 @@ def test_liveness_exposes_public_release_identity(client):
     response=client.get('/api/health')
     assert response.status_code==200
     assert response.json()['release']['version']=='0.4.0'
+    assert len(response.headers['x-request-id'])==12
+
+
+def test_unexpected_errors_return_a_safe_support_code(monkeypatch):
+    from akis.main import app
+    monkeypatch.setattr('akis.main.release_info',lambda:(_ for _ in ()).throw(RuntimeError('secret database detail')))
+    with TestClient(app,base_url='http://localhost:5173',headers={'Origin':'http://localhost:5173'},raise_server_exceptions=False) as error_client:
+        response=error_client.get('/api/health')
+    body=response.json()
+    assert response.status_code==500
+    assert body['error']=='İşlem tamamlanamadı.'
+    assert len(body['support_code'])==12
+    assert response.headers['x-request-id']==body['support_code']
+    assert 'secret database detail' not in response.text

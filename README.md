@@ -93,6 +93,9 @@ Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında 
 Canlı sürüm kimliği `/api/health` ve Sistem Yönetimi ekranında görünür. Northflank
 dağıtımlarında commit otomatik `NF_DEPLOYMENT_SHA` üzerinden okunur; başka bir
 ortamda gerekirse salt okunur `AKIS_BUILD_SHA` değişkeni verilebilir.
+Her HTTP yanıtı `X-Request-ID` başlığı taşır. Beklenmeyen bir sunucu hatasında
+kullanıcıya gösterilen destek kodu aynı kimliktir; ayrıntılı hata yalnız sunucu
+loguna, istek gövdesi ve sorgu parametreleri yazılmadan kaydedilir.
 Belleği sınırlı barındırma ortamlarında FFmpeg varsayılan olarak tek thread kullanır;
 süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlanabilir.
 

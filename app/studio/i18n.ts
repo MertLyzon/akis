@@ -63,6 +63,7 @@ Object.assign(english,{
   ,'Yedekler şifreli olarak sunucu diskinde saklanır.':'Backups are stored encrypted on the server disk.'
   ,'Geri yüklemek için aynı CREDENTIAL_KEY gerekir.':'Restoring requires the same CREDENTIAL_KEY.'
   ,'Konum':'Location','Yerel + özel bulut':'Local + private cloud','Özel bulut':'Private cloud','Yerel':'Local'
+  ,'Destek kodu':'Support code'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}
