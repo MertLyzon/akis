@@ -28,6 +28,7 @@ from .oauth import router,begin
 from .access import session_token,Actor,require,current_user,session_user,audit,ensure_bootstrap,first_system_admin,memberships_json,resolve_company,PERMISSIONS
 from . import storage
 from .health import is_ready,service_health
+from .diagnostics import record_api_error
 
 Platform=Literal['x','instagram','tiktok','whatsapp']
 log=logging.getLogger(__name__)
@@ -113,7 +114,8 @@ async def platform_error(req,exc): return JSONResponse({'error':exc.message,'cod
 @app.exception_handler(Exception)
 async def unexpected_error(req,exc):
     support_code=getattr(req.state,'request_id',uuid4().hex[:12])
-    log.error('Unhandled request error support_code=%s method=%s path=%s',support_code,req.method,req.url.path,exc_info=(type(exc),exc,exc.__traceback__))
+    incident=record_api_error(support_code,req.method,req.url.path)
+    log.error('Unhandled request error support_code=%s method=%s path=%s',incident['support_code'],incident['method'],incident['path'],exc_info=(type(exc),exc,exc.__traceback__))
     return JSONResponse({'error':'İşlem tamamlanamadı.','support_code':support_code},500,headers={'X-Request-ID':support_code})
 
 def set_session(response,user,req=None):
