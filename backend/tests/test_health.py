@@ -27,6 +27,9 @@ def test_service_health_reports_worker_and_beat(monkeypatch):
     health=service_health()
     assert health['database'] and health['redis']
     assert health['worker'] and health['beat']
+    assert health['database_ms'] >= 0
+    assert health['redis_ms'] >= 0
+    assert health['storage_ms'] >= 0
     assert is_ready(health)
 
 

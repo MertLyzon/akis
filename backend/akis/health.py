@@ -83,25 +83,32 @@ def service_health() -> dict:
     checked_at = int(time.time())
     result = {
         "database": False,
+        "database_ms": None,
         "redis": None,
+        "redis_ms": None,
         "worker": None,
         "beat": None,
         "worker_last_seen": None,
         "beat_last_seen": None,
         "storage": None,
+        "storage_ms": None,
         "queue_mode": settings.queue_mode,
         "database_kind": engine.dialect.name,
         "checked_at": checked_at,
         "release": release_info(),
     }
+    started = time.perf_counter()
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("select 1")
         result["database"] = True
     except Exception:
         pass
+    finally:
+        result["database_ms"] = round((time.perf_counter() - started) * 1000, 1)
 
     if settings.queue_mode == "celery":
+        started = time.perf_counter()
         try:
             client = redis_client()
             result["redis"] = bool(client.ping())
@@ -111,10 +118,15 @@ def service_health() -> dict:
             result["redis"] = False
             result["worker"] = False
             result["beat"] = False
+        finally:
+            result["redis_ms"] = round((time.perf_counter() - started) * 1000, 1)
+    started = time.perf_counter()
     try:
         result["storage"] = storage.ping()
     except Exception:
         result["storage"] = False
+    finally:
+        result["storage_ms"] = round((time.perf_counter() - started) * 1000, 1)
     return result
 
 

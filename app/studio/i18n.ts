@@ -79,6 +79,7 @@ Object.assign(english,{
   ,'Kalıcı veritabanı':'Durable database','Üretimde PostgreSQL kullanılmalı.':'PostgreSQL should be used in production.','Arka plan kuyruğu':'Background queue','Üretimde Redis ve Celery kullanılmalı.':'Redis and Celery should be used in production.'
   ,'Yönetici parolası':'Administrator password','ADMIN_PASSWORD_HASH yapılandırılmalı.':'ADMIN_PASSWORD_HASH must be configured.','Herkese açık medya':'Public media','Cloudinary veya herkese açık HTTPS adresi gerekli.':'Cloudinary or a public HTTPS address is required.'
   ,'Kalıcı medya depolama':'Durable media storage','Cloudinary önerilir; aksi halde sunucu diski yeniden dağıtımda kaybolabilir.':'Cloudinary is recommended; otherwise server-disk media may be lost during redeployment.'
+  ,'Yanıt süreleri mevcut sağlık kontrolleri sırasında ölçülür; ek istek oluşturmaz.':'Response times are measured during existing health checks; no extra requests are made.'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}
