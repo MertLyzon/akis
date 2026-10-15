@@ -12,13 +12,29 @@ from test_companies import add_member,user_client
 def png(name='kampanya.png'):
     out=io.BytesIO();Image.new('RGB',(40,40),'red').save(out,'PNG');return {'file':(name,out.getvalue(),'image/png')}
 
-def test_state_etag_answers_304_when_nothing_changed(client):
+def test_state_etag_answers_304_without_rebuilding_unchanged_state(client,monkeypatch):
+    import akis.main as main
     first=client.get('/api/state');etag=first.headers['etag']
+    original=main.state_json
+    monkeypatch.setattr(main,'state_json',lambda actor: (_ for _ in ()).throw(AssertionError('state rebuilt')))
     again=client.get('/api/state',headers={'If-None-Match':etag})
     assert again.status_code==304 and again.content==b''
+    monkeypatch.setattr(main,'state_json',original)
     client.post('/api/posts',json={'requestId':str(uuid.uuid4()),'text':'Yeni taslak','platforms':['x']})
     changed=client.get('/api/state',headers={'If-None-Match':etag})
     assert changed.status_code==200 and changed.headers['etag']!=etag
+
+def test_state_etag_fast_path_expires(client,monkeypatch):
+    import akis.main as main
+    clock=[100.0]
+    monkeypatch.setattr(main.time,'monotonic',lambda:clock[0])
+    first=client.get('/api/state');etag=first.headers['etag']
+    clock[0]+=main.STATE_ETAG_FAST_SECONDS
+    calls=[]
+    original=main.state_json
+    monkeypatch.setattr(main,'state_json',lambda actor:calls.append(actor.company_id) or original(actor))
+    again=client.get('/api/state',headers={'If-None-Match':etag})
+    assert again.status_code==304 and calls
 
 def test_state_is_gzipped_and_media_file_is_not(client):
     for i in range(30): client.post('/api/posts',json={'requestId':str(uuid.uuid4()),'text':f'Taslak {i} '*20,'platforms':['x']})

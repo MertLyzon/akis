@@ -61,6 +61,41 @@ def allowed_origins():
         _origins['value']={settings.app_origin.rstrip('/'),public,*APP_ORIGINS} - {''};_origins['at']=time.monotonic()
     return _origins['value']
 
+# Open studios poll state every 4-15 seconds. Remember only the latest ETag per
+# viewer so the first unchanged poll can avoid rebuilding the large state JSON.
+# Successful writes clear the cache immediately; worker-side changes are picked
+# up by the following full poll. This is process-local and never stores bodies.
+# Five seconds makes one active (4 s) poll cheap without hiding a worker update
+# beyond the following poll; idle (15 s) polling always performs a full check.
+STATE_ETAG_FAST_SECONDS=5
+STATE_ETAG_CACHE_MAX=256
+_state_etags={}
+_state_etags_lock=threading.Lock()
+
+def state_cache_key(actor):
+    return actor.user_id,actor.company_id,actor.role
+
+def recent_state_etag(actor):
+    key=state_cache_key(actor)
+    with _state_etags_lock:
+        cached=_state_etags.get(key)
+        if not cached: return None
+        if time.monotonic()-cached[0]>=STATE_ETAG_FAST_SECONDS:
+            _state_etags.pop(key,None);return None
+        return cached[1]
+
+def remember_state_etag(actor,etag):
+    key=state_cache_key(actor)
+    with _state_etags_lock:
+        # Reinsert so normal dict order is also least-recently-stored order.
+        _state_etags.pop(key,None)
+        _state_etags[key]=(time.monotonic(),etag)
+        while len(_state_etags)>STATE_ETAG_CACHE_MAX:
+            _state_etags.pop(next(iter(_state_etags)))
+
+def clear_state_etags():
+    with _state_etags_lock: _state_etags.clear()
+
 # The studio shell (when this server hosts the built UI) only loads its own files; media may come from Cloudinary.
 SPA_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://res.cloudinary.com; media-src 'self' blob: https://res.cloudinary.com; connect-src 'self'; font-src 'self' data:; object-src 'none'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 
@@ -81,6 +116,8 @@ async def guards(req,call_next):
         if req.headers.get('content-type','').startswith('application/json') and b'\\u0000' in (await req.body()).lower(): return JSONResponse({'error':'Metinde geçersiz karakter var.'},400)
     if '\x00' in unquote(req.url.path) or '%00' in req.url.query: return JSONResponse({'error':'Adreste geçersiz karakter var.'},400)
     response=await call_next(req)
+    if req.method in ('POST','PUT','PATCH','DELETE') and response.status_code<400:
+        clear_state_etags()
     if not req.url.path.endswith('/file'): response.headers['Cache-Control']='no-store'
     response.headers['X-Content-Type-Options']='nosniff'
     response.headers['Referrer-Policy']='no-referrer'
@@ -325,10 +362,14 @@ def post_json(p,rows,attempts,attempt_totals,assets,people):
 @app.get('/api/state')
 def state(req:Request,actor=Depends(require('read'))):
     """Polled every few seconds by open studios. An unchanged state answers 304 with no body."""
+    presented=req.headers.get('if-none-match')
+    if presented and presented==recent_state_etag(actor):
+        return Response(status_code=304,headers={'ETag':presented})
     body=json.dumps(state_json(actor),ensure_ascii=False,separators=(',',':')).encode()
     # Bound to the viewer as well as the data: one person's tag never validates another's cached copy.
     etag='"'+hashlib.sha256(f'{actor.user_id}|{actor.company_id}|'.encode()+body).hexdigest()[:32]+'"'
-    if req.headers.get('if-none-match')==etag: return Response(status_code=304,headers={'ETag':etag})
+    remember_state_etag(actor,etag)
+    if presented==etag: return Response(status_code=304,headers={'ETag':etag})
     return Response(body,media_type='application/json',headers={'ETag':etag})
 
 def state_json(actor):
