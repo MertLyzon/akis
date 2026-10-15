@@ -298,6 +298,20 @@ def test_upload_size_limits_and_no_leftovers(client,monkeypatch):
     assert client.post('/api/media',files={'file':('buyuk.mp4',b'\x00'*(1024*1024+10),'video/mp4')}).status_code==413
     assert set(Path(settings.media_root).iterdir())==before
 
+def test_company_storage_quota_is_enforced_without_leaving_a_file(client,monkeypatch):
+    from akis.config import settings
+    from pathlib import Path
+    monkeypatch.setattr(settings,'company_storage_mb',1)
+    with Session() as db:
+        db.add(MediaAsset(company_id=a_company(),filename='existing.mp4',storage_key='existing.mp4',mime_type='video/mp4',size=1024*1024,status='ready'))
+        db.commit()
+    before=set(Path(settings.media_root).iterdir())
+    response=client.post('/api/media',files=png('quota.png'))
+    assert response.status_code==413
+    assert 'depolama sınırına' in response.json()['error']
+    assert set(Path(settings.media_root).iterdir())==before
+    assert client.get('/api/company').json()['usage']['storage_limit_bytes']==1024*1024
+
 def test_decompression_bomb_is_refused(client):
     out=io.BytesIO();Image.new('1',(7000,7000)).save(out,'PNG')  # 49 MP, a few KB on disk
     assert len(out.getvalue())<200_000

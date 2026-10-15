@@ -30,7 +30,7 @@ def usage(db,company_id):
     storage_bytes=db.scalar(select(func.coalesce(func.sum(MediaAsset.size),0)).where(MediaAsset.company_id==company_id)) or 0
     since=now()-30*86400
     sent=db.scalar(select(func.count()).select_from(ContentPlatform).join(Content,Content.id==ContentPlatform.content_id).where(Content.company_id==company_id,ContentPlatform.status.in_(('sent','submitted')),ContentPlatform.sent_at>=since)) or 0
-    return {'storage_bytes':int(storage_bytes),'media_count':db.scalar(select(func.count()).select_from(MediaAsset).where(MediaAsset.company_id==company_id,MediaAsset.variant=='source')) or 0,
+    return {'storage_bytes':int(storage_bytes),'storage_limit_bytes':max(0,settings.company_storage_mb)*1024*1024,'media_count':db.scalar(select(func.count()).select_from(MediaAsset).where(MediaAsset.company_id==company_id,MediaAsset.variant=='source')) or 0,
         'content_count':db.scalar(select(func.count()).select_from(Content).where(Content.company_id==company_id)) or 0,'deliveries_30d':sent,
         'pending_approval':db.scalar(select(func.count()).select_from(Content).where(Content.company_id==company_id,Content.status=='pending_approval')) or 0,
         'connections':sorted(db.scalars(select(Credential.platform).where(Credential.company_id==company_id)))}

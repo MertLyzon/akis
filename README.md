@@ -109,6 +109,8 @@ Yönetimi ekranında yalnızca süreç belleğinde tutulur. Bu liste veritabanı
 kalıcı depolamayı büyütmez ve API yeniden başladığında temizlenir.
 Belleği sınırlı barındırma ortamlarında FFmpeg varsayılan olarak tek thread kullanır;
 süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlanabilir.
+Şirket başına toplam medya ve üretilen varyantlar varsayılan olarak 500 MB ile
+sınırlıdır. `COMPANY_STORAGE_MB` bu sınırı değiştirir; `0` sınırsız kullanım içindir.
 
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
