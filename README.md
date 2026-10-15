@@ -91,7 +91,9 @@ medya depolamasını ve Worker/Beat süreçlerinin Redis'e yazdığı kısa öm�
 heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503 döner.
 Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında gösterir.
 Veritabanı, Redis ve uzak medya depolaması için mevcut kontrollerin yanıt süresi de
-milisaniye olarak raporlanır; bu ölçüm ayrıca bir ağ isteği oluşturmaz.
+milisaniye olarak raporlanır; bu ölçüm ayrıca bir ağ isteği oluşturmaz. Veritabanı
+ve Redis bir saniyeyi, uzak medya depolaması üç saniyeyi aşarsa işletim özeti
+servisi kapatmadan dikkat uyarısı verir.
 Ekranın üstündeki işletim özeti kritik bağımlılık kesintilerini; takılı gönderimleri,
 hatalı medyayı ve son 15 dakikadaki API hatalarını tek bakışta ayrıca işaretler.
 Dağıtım denetimi gizli değerleri göstermeden HTTPS origin, PostgreSQL, Redis/Celery,

@@ -80,6 +80,7 @@ Object.assign(english,{
   ,'Yönetici parolası':'Administrator password','ADMIN_PASSWORD_HASH yapılandırılmalı.':'ADMIN_PASSWORD_HASH must be configured.','Herkese açık medya':'Public media','Cloudinary veya herkese açık HTTPS adresi gerekli.':'Cloudinary or a public HTTPS address is required.'
   ,'Kalıcı medya depolama':'Durable media storage','Cloudinary önerilir; aksi halde sunucu diski yeniden dağıtımda kaybolabilir.':'Cloudinary is recommended; otherwise server-disk media may be lost during redeployment.'
   ,'Yanıt süreleri mevcut sağlık kontrolleri sırasında ölçülür; ek istek oluşturmaz.':'Response times are measured during existing health checks; no extra requests are made.'
+  ,'Veritabanı yavaş yanıtlıyor':'Database is responding slowly','Redis yavaş yanıtlıyor':'Redis is responding slowly','Medya depolaması yavaş yanıtlıyor':'Media storage is responding slowly'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}

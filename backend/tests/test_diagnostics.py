@@ -33,3 +33,22 @@ def test_operational_summary_prioritizes_critical_and_recent_issues():
 
     configuration = operational_summary(healthy, {}, [], {'checks':[{'code':'cloud_storage','ok':False,'severity':'warning'}]}, checked_at=2_000)
     assert configuration['issues'] == [{'code':'deployment_configuration','severity':'warning','count':1}]
+
+
+def test_operational_summary_warns_only_for_healthy_slow_dependencies():
+    health = {
+        'database':True,'database_ms':1_000.1,
+        'redis':True,'redis_ms':1_000,
+        'worker':True,'beat':True,
+        'storage':True,'storage_ms':3_000.1,
+        'checked_at':2_000,
+    }
+    result = operational_summary(health, {}, [], checked_at=2_000)
+    assert result['level'] == 'warning'
+    assert result['issues'] == [
+        {'code':'database_slow','severity':'warning','count':1},
+        {'code':'storage_slow','severity':'warning','count':1},
+    ]
+
+    failed = operational_summary({**health,'database':False}, {}, [], checked_at=2_000)
+    assert [issue['code'] for issue in failed['issues']] == ['database_unavailable','storage_slow']
