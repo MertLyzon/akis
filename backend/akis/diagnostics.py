@@ -42,7 +42,7 @@ def recent_api_errors() -> list[dict]:
         return list(reversed(_errors))
 
 
-def operational_summary(health: dict, queue: dict, api_errors: list[dict], checked_at: int | None = None) -> dict:
+def operational_summary(health: dict, queue: dict, api_errors: list[dict], deployment: dict | None = None, checked_at: int | None = None) -> dict:
     """Turn raw health counters into a small, stable operator-facing summary."""
     issues = []
     for key, code in (
@@ -64,6 +64,11 @@ def operational_summary(health: dict, queue: dict, api_errors: list[dict], check
     recent_count = sum(1 for row in api_errors if int(row.get('at') or 0) >= now - _RECENT_ERROR_SECONDS)
     if recent_count:
         issues.append({'code':'recent_api_errors','severity':'warning','count':recent_count})
+
+    failed_checks = [check for check in (deployment or {}).get('checks', []) if not check.get('ok')]
+    if failed_checks:
+        severity = 'critical' if any(check.get('severity')=='critical' for check in failed_checks) else 'warning'
+        issues.append({'code':'deployment_configuration','severity':severity,'count':len(failed_checks)})
 
     level = 'critical' if any(issue['severity']=='critical' for issue in issues) else 'warning' if issues else 'healthy'
     return {'level':level,'issues':issues,'checked_at':now}

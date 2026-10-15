@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from akis import release_info
 from akis.config import settings
-from akis.health import heartbeat_key,is_ready,service_health,write_heartbeat
+from akis.health import deployment_checks,heartbeat_key,is_ready,service_health,write_heartbeat
 
 
 def test_heartbeat_is_short_lived_and_timestamped():
@@ -41,6 +41,27 @@ def test_readiness_rejects_a_stale_queue(client,monkeypatch):
 
 def test_local_mode_does_not_require_redis_or_queue_processes():
     assert is_ready({'database':True,'storage':None,'queue_mode':'local'})
+
+
+def test_deployment_checks_report_only_safe_configuration_state(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(settings,'local_mode',False)
+    monkeypatch.setattr(settings,'app_origin','https://studio.example.com')
+    monkeypatch.setattr(settings,'queue_mode','celery')
+    monkeypatch.setattr(settings,'admin_password_hash','configured-hash')
+    monkeypatch.setattr('akis.health.engine',SimpleNamespace(dialect=SimpleNamespace(name='postgresql')))
+    monkeypatch.setattr('akis.health.storage.enabled',lambda:True)
+    result=deployment_checks('')
+    assert result['ready'] and all(check['ok'] for check in result['checks'])
+    assert 'configured-hash' not in str(result)
+
+    monkeypatch.setattr(settings,'app_origin','http://localhost:5173/path?token=secret')
+    monkeypatch.setattr('akis.health.engine',SimpleNamespace(dialect=SimpleNamespace(name='sqlite')))
+    monkeypatch.setattr('akis.health.storage.enabled',lambda:False)
+    result=deployment_checks('http://localhost:8000?token=secret')
+    assert not result['ready']
+    assert {check['code'] for check in result['checks'] if not check['ok']}=={'app_origin_https','postgresql','public_media','cloud_storage'}
+    assert 'secret' not in str(result)
 
 
 def test_release_info_uses_and_sanitizes_deployment_sha(monkeypatch):

@@ -72,6 +72,13 @@ Object.assign(english,{
   ,'Gönderim altyapısı ve bağımlılıklar normal çalışıyor.':'Delivery infrastructure and dependencies are operating normally.'
   ,'Veritabanına ulaşılamıyor':'Database is unavailable','Redis bağlantısı yok':'Redis connection is unavailable','Arka plan işleyicisi çalışmıyor':'Background worker is not running','Zamanlayıcı çalışmıyor':'Scheduler is not running','Medya depolamasına ulaşılamıyor':'Media storage is unavailable'
   ,'Takılı gönderim':'Stuck delivery','Hatalı medya':'Failed media','Son 15 dakikadaki API hatası':'API error in the last 15 minutes'
+  ,'Dağıtım yapılandırması eksik':'Deployment configuration is incomplete','Dağıtım denetimi':'Deployment checks'
+  ,'Gizli değerler gösterilmeden, canlı ortamın güvenli ve kalıcı çalışması için gereken temel ayarlar denetlenir.':'Essential settings for a secure and durable production environment are checked without displaying secret values.'
+  ,'Yerel geliştirme modu':'Local development mode','Üretim denetimleri canlı sunucuda etkinleşir.':'Production checks are enabled on the live server.'
+  ,'Sunucu modu':'Server mode','LOCAL_MODE kapalı':'LOCAL_MODE is disabled','Güvenli web adresi':'Secure web address','APP_ORIGIN geçerli bir HTTPS origin olmalı.':'APP_ORIGIN must be a valid HTTPS origin.'
+  ,'Kalıcı veritabanı':'Durable database','Üretimde PostgreSQL kullanılmalı.':'PostgreSQL should be used in production.','Arka plan kuyruğu':'Background queue','Üretimde Redis ve Celery kullanılmalı.':'Redis and Celery should be used in production.'
+  ,'Yönetici parolası':'Administrator password','ADMIN_PASSWORD_HASH yapılandırılmalı.':'ADMIN_PASSWORD_HASH must be configured.','Herkese açık medya':'Public media','Cloudinary veya herkese açık HTTPS adresi gerekli.':'Cloudinary or a public HTTPS address is required.'
+  ,'Kalıcı medya depolama':'Durable media storage','Cloudinary önerilir; aksi halde sunucu diski yeniden dağıtımda kaybolabilir.':'Cloudinary is recommended; otherwise server-disk media may be lost during redeployment.'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}

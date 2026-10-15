@@ -30,3 +30,6 @@ def test_operational_summary_prioritizes_critical_and_recent_issues():
     critical = operational_summary({**healthy,'database':False,'worker':False}, {}, [], checked_at=2_000)
     assert critical['level'] == 'critical'
     assert [issue['code'] for issue in critical['issues']] == ['database_unavailable','worker_unavailable']
+
+    configuration = operational_summary(healthy, {}, [], {'checks':[{'code':'cloud_storage','ok':False,'severity':'warning'}]}, checked_at=2_000)
+    assert configuration['issues'] == [{'code':'deployment_configuration','severity':'warning','count':1}]
