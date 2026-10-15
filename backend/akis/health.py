@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from urllib.parse import urlsplit
 
 from . import release_info
 from . import storage
@@ -124,3 +125,37 @@ def is_ready(health: dict) -> bool:
     # None means local disk storage; only an explicitly failed configured
     # remote store makes the service unready.
     return health["database"] is True and health["storage"] is not False and queue_ready
+
+
+def _https_url(value: str, origin: bool = False) -> bool:
+    try:
+        parsed = urlsplit(value.strip())
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        parsed.scheme == 'https'
+        and parsed.hostname
+        and not parsed.username
+        and not parsed.password
+        and not parsed.query
+        and not parsed.fragment
+        and (not origin or parsed.path in ('', '/'))
+    )
+
+
+def deployment_checks(public_base_url: str) -> dict:
+    """Safe production configuration checks; values and secrets are never returned."""
+    if settings.local_mode:
+        return {'mode':'local','ready':True,'checks':[{'code':'local_mode','ok':True,'severity':'info'}]}
+
+    remote_storage = storage.enabled()
+    checks = [
+        {'code':'server_mode','ok':True,'severity':'critical'},
+        {'code':'app_origin_https','ok':_https_url(settings.app_origin,origin=True),'severity':'critical'},
+        {'code':'postgresql','ok':engine.dialect.name=='postgresql','severity':'critical'},
+        {'code':'celery_queue','ok':settings.queue_mode=='celery','severity':'critical'},
+        {'code':'admin_password','ok':bool(settings.admin_password_hash.strip()),'severity':'critical'},
+        {'code':'public_media','ok':remote_storage or _https_url(public_base_url),'severity':'warning'},
+        {'code':'cloud_storage','ok':remote_storage,'severity':'warning'},
+    ]
+    return {'mode':'server','ready':all(check['ok'] for check in checks if check['severity']=='critical'),'checks':checks}

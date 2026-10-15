@@ -16,8 +16,9 @@ from .security import password_hash
 from .access import require, system_admin, audit, ROLE_NAMES
 from .config import settings
 from . import storage
-from .health import service_health
+from .health import deployment_checks, service_health
 from .diagnostics import operational_summary, recent_api_errors
+from .media import public_base
 
 router=APIRouter()
 Role=Literal['admin','approver','editor','viewer']
@@ -183,12 +184,13 @@ def system_overview(actor=Depends(system_admin)):
             for a,d,c in db.execute(select(DeliveryAttempt,ContentPlatform,Content).join(ContentPlatform,ContentPlatform.id==DeliveryAttempt.delivery_id).join(Content,Content.id==ContentPlatform.content_id)
                 .where(DeliveryAttempt.outcome.in_(('failed','unknown','retry'))).order_by(DeliveryAttempt.started_at.desc()).limit(50))]
         errors=dict(db.execute(select(ContentPlatform.error_code,func.count()).where(ContentPlatform.status.in_(('failed','unknown')),ContentPlatform.error_code.is_not(None)).group_by(ContentPlatform.error_code)).all())
+        configured_public_base=public_base(db)
     backups=list_backups()[:20]
     interval=max(0,settings.backup_interval_days)
     backup_policy={'automatic':interval>0,'interval_days':interval,'keep':max(1,settings.backup_keep),
         'remote':settings.backup_remote.strip().lower()!='local' and storage.enabled()}
-    api_errors=recent_api_errors();health=service_health()
-    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'api_errors':api_errors,'health':health,'operational':operational_summary(health,queue,api_errors),'backups':backups,'backup_policy':backup_policy,'storage':'cloudinary' if storage.enabled() else 'local'}
+    api_errors=recent_api_errors();health=service_health();deployment=deployment_checks(configured_public_base)
+    return {'companies':companies,'queue':queue,'failures':failures,'error_codes':errors,'api_errors':api_errors,'health':health,'deployment':deployment,'operational':operational_summary(health,queue,api_errors,deployment),'backups':backups,'backup_policy':backup_policy,'storage':'cloudinary' if storage.enabled() else 'local'}
 
 class NewCompany(BaseModel):
     name:str=Field(min_length=1,max_length=120)

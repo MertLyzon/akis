@@ -92,6 +92,8 @@ heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503
 Sistem yönetimi ekranı aynı bilgileri otomatik yenilenen servis kartlarında gösterir.
 Ekranın üstündeki işletim özeti kritik bağımlılık kesintilerini; takılı gönderimleri,
 hatalı medyayı ve son 15 dakikadaki API hatalarını tek bakışta ayrıca işaretler.
+Dağıtım denetimi gizli değerleri göstermeden HTTPS origin, PostgreSQL, Redis/Celery,
+yönetici parola özeti ve kalıcı medya yapılandırmasını kontrol eder.
 Canlı sürüm kimliği `/api/health` ve Sistem Yönetimi ekranında görünür. Northflank
 dağıtımlarında commit otomatik `NF_DEPLOYMENT_SHA` üzerinden okunur; başka bir
 ortamda gerekirse salt okunur `AKIS_BUILD_SHA` değişkeni verilebilir.
