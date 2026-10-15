@@ -10,6 +10,11 @@ import time
 
 _MAX_ERRORS = 20
 _RECENT_ERROR_SECONDS = 15 * 60
+_SLOW_DEPENDENCY_MS = {
+    'database': 1_000,
+    'redis': 1_000,
+    'storage': 3_000,
+}
 _SUPPORT_CODE = re.compile(r'^[0-9a-f]{12}$')
 _METHOD = re.compile(r'^[A-Z]{1,12}$')
 _errors = deque(maxlen=_MAX_ERRORS)
@@ -54,6 +59,15 @@ def operational_summary(health: dict, queue: dict, api_errors: list[dict], deplo
     ):
         if health.get(key) is False:
             issues.append({'code':code,'severity':'critical','count':1})
+
+    for key, code in (
+        ('database', 'database_slow'),
+        ('redis', 'redis_slow'),
+        ('storage', 'storage_slow'),
+    ):
+        latency = health.get(f'{key}_ms')
+        if health.get(key) is True and isinstance(latency, (int, float)) and not isinstance(latency, bool) and latency > _SLOW_DEPENDENCY_MS[key]:
+            issues.append({'code':code,'severity':'warning','count':1})
 
     for key, code in (('stuck_sending', 'stuck_deliveries'), ('media_failed', 'failed_media')):
         count = max(0, int(queue.get(key) or 0))
