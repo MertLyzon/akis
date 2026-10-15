@@ -363,7 +363,7 @@ def state_json(actor):
         'connections':[{'id':c.id,'platform':c.platform,'account':c.account_id,'label':c.account_label,'expires_at':c.expires_at,'refresh_expires_at':c.refresh_expires_at,'can_refresh':can_refresh(c),'refresh_error':c.refresh_error,'token_kind':c.token_kind,'days_left':math.ceil((c.expires_at-now())/86400) if c.expires_at else None,'has_refresh':bool(c.refresh_token),'connected_by':people.get(c.connected_by,'')} for c in creds],
         'posts':[post_json(p,rows,attempts,attempt_totals,assets,people) for p in posts],
         'assets':[a for a in assets.values() if not a['archived']],
-        'settings':{'public_base_url':public_base(db),'app_origin':settings.app_origin,'queue':settings.queue_mode,'storage':'cloudinary' if storage.enabled() else 'local','max_upload_mb':settings.max_upload_mb,'oauth_apps':[{'platform':a.platform,'client_id':a.client_id,'has_secret':bool(a.client_secret),'redirect_uri':a.redirect_uri,'mode':a.mode} for a in apps]}}
+        'settings':{'public_base_url':public_base(db),'app_origin':settings.app_origin,'queue':settings.queue_mode,'storage':'cloudinary' if storage.enabled() else 'local','max_upload_mb':settings.max_upload_mb,'company_storage_mb':max(0,settings.company_storage_mb),'oauth_apps':[{'platform':a.platform,'client_id':a.client_id,'has_secret':bool(a.client_secret),'redirect_uri':a.redirect_uri,'mode':a.mode} for a in apps]}}
 
 # ---------- Connections (company admin) ----------
 
@@ -483,6 +483,12 @@ async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
             if header[4:8]!=b'ftyp' and not header.startswith(b'\x1aE\xdf\xa3'): raise HTTPException(400,'JPEG, PNG, WebP, HEIC, MP4, MOV veya WebM dosyası yükle.')
             mime='video/mp4'
         with Session() as db:
+            # PostgreSQL row locking serializes uploads within a company so two
+            # simultaneous files cannot both pass against the same stale total.
+            db.scalar(select(Company.id).where(Company.id==actor.company_id).with_for_update())
+            quota=max(0,settings.company_storage_mb)*1024*1024
+            used=db.scalar(select(func.coalesce(func.sum(MediaAsset.size),0)).where(MediaAsset.company_id==actor.company_id)) or 0
+            if quota and used+size>quota: raise HTTPException(413,'Şirket medya depolama sınırına ulaşıldı. Kullanılmayan medyayı silip tekrar dene.')
             a=MediaAsset(id=identifier,company_id=actor.company_id,uploaded_by=actor.user_id,filename=(''.join(ch for ch in Path(file.filename or '').name if ch.isprintable())[:240] or 'medya'),storage_key=path.name,mime_type=mime,size=size,status='processing')
             db.add(a);audit(db,actor,'media.uploaded','media',identifier,filename=a.filename,size=size);db.commit();result=asset_json(a,db)
         return result

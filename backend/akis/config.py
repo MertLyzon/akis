@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     local_mode: bool = True
     media_root: str = str(ROOT / 'data' / 'media')
     max_upload_mb: int = 100
+    # Total media rows (sources and generated variants) allowed per company. 0 disables the quota.
+    company_storage_mb: int = 500
     media_max_duration_seconds: int = 600
     media_max_pixels: int = 40_000_000
     ffmpeg_threads: int = 1

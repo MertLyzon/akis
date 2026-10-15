@@ -81,6 +81,7 @@ Object.assign(english,{
   ,'Kalıcı medya depolama':'Durable media storage','Cloudinary önerilir; aksi halde sunucu diski yeniden dağıtımda kaybolabilir.':'Cloudinary is recommended; otherwise server-disk media may be lost during redeployment.'
   ,'Yanıt süreleri mevcut sağlık kontrolleri sırasında ölçülür; ek istek oluşturmaz.':'Response times are measured during existing health checks; no extra requests are made.'
   ,'Veritabanı yavaş yanıtlıyor':'Database is responding slowly','Redis yavaş yanıtlıyor':'Redis is responding slowly','Medya depolaması yavaş yanıtlıyor':'Media storage is responding slowly'
+  ,'sınır':'limit','Şirket medya depolama sınırına ulaşıldı. Kullanılmayan medyayı silip tekrar dene.':'The company media storage limit has been reached. Delete unused media and try again.'
 });
 
 export function readLanguage():Language{try{return localStorage.getItem('akis-language')==='en'?'en':'tr'}catch{return 'tr'}}
