@@ -367,7 +367,7 @@ ATTEMPTS_SHOWN=20
 STATE_RECENT_ASSETS=20
 def post_json(p,rows,attempts,attempt_totals,assets,people):
     return {'id':p.id,'text':p.body_text,'status':p.status,'created':p.created_at*1000,'platforms':p.platforms,'asset':assets.get(p.asset_id),'options':p.options,
-        'scheduled_at':p.scheduled_at,'created_by':people.get(p.created_by,''),'approved_by':people.get(p.approved_by,''),'approved_at':p.approved_at,'review_note':p.review_note,
+        'updated_at':p.updated_at,'scheduled_at':p.scheduled_at,'created_by':people.get(p.created_by,''),'approved_by':people.get(p.approved_by,''),'approved_at':p.approved_at,'review_note':p.review_note,
         'deliveries':[{'id':r.id,'platform':r.platform,'recipient':r.recipient,'status':r.status,'error':r.error_message,'error_code':r.error_code,'externalId':r.external_post_id,'retry_count':r.retry_count,'next_attempt_at':r.next_attempt_at,'sent_at':r.sent_at,'media_note':r.progress.get('media_note'),
             'attempts_total':attempt_totals.get(r.id,0),
             'attempts':[{'started_at':a.started_at,'finished_at':a.finished_at,'stage':a.stage,'outcome':a.outcome,'error_code':a.error_code,'error':a.error_message} for a in attempts.get(r.id,[])]} for r in rows.get(p.id,[])]}
@@ -638,6 +638,10 @@ class ContentInput(BaseModel):
     wa_mode:Literal['template','session']='template'
     session_confirmed:bool=False
 
+class ContentEditInput(ContentInput):
+    # Older desktop clients can still edit; current clients send the version they opened.
+    expected_updated_at:int|None=Field(default=None,ge=0)
+
 def schedule_epoch(value,timezone):
     """'YYYY-MM-DDTHH:MM' in the company's timezone → unix seconds. Empty means now."""
     if not value: return None
@@ -682,7 +686,7 @@ def apply_input(db,content,data,actor,company):
     options['recipients']=list(dict.fromkeys(data.recipients))
     platforms=list(dict.fromkeys(data.platforms))
     content.body_text=data.text.strip();content.platforms=platforms;content.asset_id=data.asset_id;content.options=options
-    content.scheduled_at=schedule_epoch(data.scheduled_local,company.timezone);content.updated_at=now();content.review_note=''
+    content.scheduled_at=schedule_epoch(data.scheduled_local,company.timezone);content.updated_at=max(now(),content.updated_at or 0);content.review_note=''
     if asset and not asset.content_id: asset.content_id=content.id
     if data.send:
         validate_send(db,actor.company_id,platforms,content.body_text,asset,options)
@@ -727,10 +731,16 @@ def company_content(db,identifier,actor):
     return p
 
 @app.put('/api/posts/{identifier}')
-def edit_content(identifier:str,data:ContentInput,background:BackgroundTasks,actor=Depends(require('compose'))):
+def edit_content(identifier:str,data:ContentEditInput,background:BackgroundTasks,actor=Depends(require('compose'))):
     with Session() as db:
         p=company_content(db,identifier,actor)
+        conflict='Bu içerik başka bir sekmede veya kullanıcı tarafından güncellendi. Yazdığın metin korunuyor. Güncel sürümü Gönderiler ekranından açıp değişikliklerini karşılaştır.'
+        if data.expected_updated_at is not None and data.expected_updated_at!=p.updated_at: raise HTTPException(409,conflict)
         if p.status not in ('draft','rejected','pending_approval'): raise HTTPException(400,'Yalnızca taslak, reddedilen veya onay bekleyen içerikler düzenlenebilir.')
+        # Claim the version before changing content or queuing deliveries. The monotonic
+        # timestamp also distinguishes two saves made within the same clock second.
+        claimed=db.execute(update(Content).where(Content.id==identifier,Content.company_id==actor.company_id,Content.updated_at==p.updated_at,Content.status==p.status).values(updated_at=max(now(),p.updated_at+1)))
+        if claimed.rowcount!=1: raise HTTPException(409,conflict)
         outcome=apply_input(db,p,data,actor,db.get(Company,actor.company_id))
         audit(db,actor,'content.edited','content',identifier,outcome=outcome);db.commit()
     after_commit(background,identifier,outcome)
@@ -745,7 +755,7 @@ def approve_content(identifier:str,data:ReviewInput,background:BackgroundTasks,a
         if p.status!='pending_approval': raise HTTPException(400,'Bu içerik onay beklemiyor.')
         if p.scheduled_at and p.scheduled_at<now()-60: raise HTTPException(400,'Planlanan zaman geçti. İçeriği düzenleyip yeni bir zaman seç.')
         validate_send(db,actor.company_id,p.platforms,p.body_text,db.get(MediaAsset,p.asset_id) if p.asset_id else None,{**{'recipients':[],'wa_mode':'template','template':'','language':'tr','session_confirmed':False},**p.options})
-        queue_deliveries(db,p,actor);p.review_note=data.note.strip()
+        queue_deliveries(db,p,actor);p.review_note=data.note.strip();p.updated_at=max(now(),p.updated_at+1)
         audit(db,actor,'content.approved','content',identifier,note=p.review_note,scheduled_at=p.scheduled_at);db.commit()
     after_commit(background,identifier,'approved')
     return {'ok':True}
@@ -756,7 +766,7 @@ def reject_content(identifier:str,data:ReviewInput,actor=Depends(require('approv
     with Session() as db:
         p=company_content(db,identifier,actor)
         if p.status!='pending_approval': raise HTTPException(400,'Bu içerik onay beklemiyor.')
-        p.status='rejected';p.review_note=data.note.strip();p.updated_at=now()
+        p.status='rejected';p.review_note=data.note.strip();p.updated_at=max(now(),p.updated_at+1)
         audit(db,actor,'content.rejected','content',identifier,note=p.review_note);db.commit()
     return {'ok':True}
 
@@ -771,7 +781,7 @@ def cancel_schedule(identifier:str,actor=Depends(require('approve'))):
         removed=db.execute(delete(ContentPlatform).where(ContentPlatform.content_id==p.id,ContentPlatform.status=='pending',ContentPlatform.retry_count==0)).rowcount
         if removed!=len(rows): db.rollback();raise HTTPException(400,'Gönderim başladığı için plan iptal edilemez.')
         db.execute(delete(Broadcast).where(Broadcast.content_id==p.id))
-        p.status='draft';p.approved_by=None;p.approved_at=None;p.updated_at=now()
+        p.status='draft';p.approved_by=None;p.approved_at=None;p.updated_at=max(now(),p.updated_at+1)
         audit(db,actor,'content.schedule_cancelled','content',identifier);db.commit()
     return {'ok':True}
 
