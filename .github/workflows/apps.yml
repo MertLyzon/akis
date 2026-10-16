@@ -52,6 +52,8 @@ jobs:
       - uses: actions/setup-node@v5
         with: {node-version: 22, cache: npm}
       - run: npm ci && npm run build
+      - name: Upload queue tests
+        run: npm run test:uploads
       - name: Install browser smoke-test runtime
         run: npx playwright install --with-deps chromium
       - name: Browser smoke tests
