@@ -114,7 +114,9 @@ sınırlıdır. `COMPANY_STORAGE_MB` bu sınırı değiştirir; `0` sınırsız 
 
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
-kurmak gerekir; testler gerçek uygulama veritabanına veya medya klasörüne yazmaz.
+kurmak gerekir. Test çalıştırıcısı mevcutsa proje kökündeki `.venv` Python'unu,
+yoksa sistem Python'unu kullanır; testler gerçek uygulama veritabanına veya medya
+klasörüne yazmaz.
 
 Sunucuda HTTPS ters proxy kurup `.env` içine `APP_ORIGIN=https://kendi-alan-adiniz` ve `PUBLIC_BASE_URL=https://kendi-alan-adiniz` ekleyin, servisleri yeniden oluşturun. Compose web portu 127.0.0.1:8080'e bağlıdır; HTTPS proxy bu porta yönlenmelidir. LOCAL_MODE üretimde false kalmalıdır. Bu paket sunucuya otomatik yayımlanmış değildir.
 
