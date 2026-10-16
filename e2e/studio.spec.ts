@@ -1,5 +1,43 @@
 import {expect,test} from '@playwright/test';
 
+test('review locks one post and preserves the rejection note after a failure',async({page})=>{
+  await page.goto('/');
+  const names=[`Review A ${Date.now()}`,`Review B ${Date.now()}`];
+  for(const text of names)expect((await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text,platforms:['x']}})).ok()).toBeTruthy();
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const post=snapshot.posts.find((p:any)=>p.text===names[0]);
+  post.status='pending_approval';
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  let requests=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(`**/api/posts/${post.id}/reject`,async route=>{
+    requests++;
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Temporary review failure'}})}
+    post.status='rejected';post.review_note=route.request().postDataJSON().note;
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  const row=page.locator('article').filter({hasText:names[0]});
+  await row.getByRole('button',{name:'Reddet',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal.getByRole('button',{name:'Reddet',exact:true})).toBeDisabled();
+  await modal.getByLabel('Red nedeni',{exact:true}).fill('Please update the image');
+  await modal.getByRole('button',{name:'Reddet',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(row).toHaveAttribute('aria-busy','true');
+  await expect(row.getByRole('button',{name:'Onayla',exact:true,includeHidden:true})).toBeDisabled();
+  await expect(page.locator('article').filter({hasText:names[1]}).getByRole('button',{name:'Düzenle',exact:true,includeHidden:true})).toBeEnabled();
+  release();
+  await expect(modal.getByLabel('Red nedeni',{exact:true})).toBeEnabled();
+  await expect(modal.getByLabel('Red nedeni',{exact:true})).toHaveValue('Please update the image');
+  await modal.getByRole('button',{name:'Reddet',exact:true}).click();
+  await expect(modal).toBeHidden();
+  await expect(row).toContainText('Please update the image');
+  expect(requests).toBe(2);
+});
+
 test('switching drafts asks before discarding edits and cancelling preserves them',async({page})=>{
   await page.goto('/');
   const names=[`Draft A ${Date.now()}`,`Draft B ${Date.now()}`];
