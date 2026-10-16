@@ -211,8 +211,18 @@ def test_disabled_user_session_stops_working(client):
     with user_client('kapali@firma.com',password) as c:
         with Session() as db: db.scalar(select(User).where(User.email=='kapali@firma.com')).disabled=True;db.commit()
         assert c.get('/api/state').status_code==401
-        # Local mode then falls back to its loopback auto sign-in; the disabled account itself is never restored.
-        assert (c.get('/api/session').json()['user'] or {}).get('email')!='kapali@firma.com'
+        session=c.get('/api/session').json()
+        assert session['authenticated'] is False and session['user'] is None
+        # The invalid cookie is cleared and auto-login remains blocked on later refreshes.
+        assert c.cookies.get('akis_session') is None
+        assert c.get('/api/session').json()['authenticated'] is False
+
+def test_invalid_local_session_never_falls_back_to_system_admin(client):
+    client.cookies.set('akis_session','tampered-session',domain='localhost.local',path='/')
+    first=client.get('/api/session')
+    assert first.status_code==200 and first.json()['authenticated'] is False
+    assert client.cookies.get('akis_session') is None
+    assert client.get('/api/session').json()['authenticated'] is False
 
 def test_session_token_never_echoed(client):
     token=client.cookies.get('akis_session')
