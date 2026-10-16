@@ -1,5 +1,19 @@
 import {expect,test} from '@playwright/test';
 
+test('unsaved text survives immediate reloads and clearing removes the saved copy',async({page})=>{
+  await page.goto('/');
+  const editor=page.locator('#content');
+  const text=`Unsent draft ${Date.now()}`;
+  await editor.fill(text);
+  await page.reload();
+  await expect(editor).toHaveValue(text);
+  await page.reload();
+  await expect(editor).toHaveValue(text);
+  await editor.fill('');
+  await page.reload();
+  await expect(editor).toHaveValue('');
+});
+
 test('API and system screen expose the running release',async({page,request})=>{
   const response=await request.get('/api/health');
   expect(response.ok()).toBeTruthy();
