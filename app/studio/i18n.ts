@@ -1,6 +1,10 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Kaydedilmemiş değişiklikler':'Unsaved changes',
+  'Düzenlemeye devam et':'Keep editing',
+  'Değişiklikleri bırak':'Discard changes',
+  'Kaydedilmemiş değişikliklerin var. Bu değişiklikleri bırakıp devam etmek istiyor musun?':'You have unsaved changes. Discard these changes and continue?',
   'Bu içerik başka bir sekmede veya kullanıcı tarafından güncellendi. Yazdığın metin korunuyor. Güncel sürümü Gönderiler ekranından açıp değişikliklerini karşılaştır.':'This post was updated in another tab or by another user. Your text is preserved. Open the latest version from Posts to compare your changes.',
   'Gönderileri incele':'Review posts',
   'Bu ayki paylaşımlar':'Posts this month',

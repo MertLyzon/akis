@@ -1,5 +1,43 @@
 import {expect,test} from '@playwright/test';
 
+test('switching drafts asks before discarding edits and cancelling preserves them',async({page})=>{
+  await page.goto('/');
+  const names=[`Draft A ${Date.now()}`,`Draft B ${Date.now()}`];
+  for(const text of names){
+    const result=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text,platforms:['x']}});
+    expect(result.ok()).toBeTruthy();
+  }
+  await page.reload();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.locator('article').filter({hasText:names[0]}).getByRole('button',{name:'Düzenle',exact:true}).click();
+  await page.locator('#content').fill('Unsaved edits to preserve');
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.locator('article').filter({hasText:names[1]}).getByRole('button',{name:'Düzenle',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Kaydedilmemiş değişikliklerin var.');
+  await page.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await page.getByRole('button',{name:'İçerik oluştur',exact:true}).click();
+  await expect(page.locator('#content')).toHaveValue('Unsaved edits to preserve');
+  await page.getByRole('button',{name:'Düzenlemeyi bırak',exact:true}).click();
+  await page.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect(page.locator('#content')).toHaveValue('');
+});
+
+test('new content clears WhatsApp recipients and template settings',async({page})=>{
+  await page.goto('/');
+  await page.locator('#content').fill(`WhatsApp reset ${Date.now()}`);
+  await page.getByRole('button',{name:'◉ WhatsApp',exact:true}).click();
+  await page.getByLabel('Alıcı numaraları',{exact:true}).fill('905111111111');
+  await page.getByLabel('Onaylı şablon adı',{exact:true}).fill('previous_template');
+  await page.getByLabel('Şablon dil kodu',{exact:true}).fill('en_US');
+  await page.getByRole('button',{name:'Taslağı kaydet',exact:true}).click();
+  await page.getByRole('button',{name:'Yeni içerik',exact:true}).click();
+  await expect(page.locator('#content')).toHaveValue('');
+  await page.getByRole('button',{name:'◉ WhatsApp',exact:true}).click();
+  await expect(page.getByLabel('Alıcı numaraları',{exact:true})).toHaveValue('');
+  await expect(page.getByLabel('Onaylı şablon adı',{exact:true})).toHaveValue('');
+  await expect(page.getByLabel('Şablon dil kodu',{exact:true})).toHaveValue('tr');
+});
+
 test('an outdated editor preserves text and cannot overwrite a newer save',async({page})=>{
   await page.goto('/');
   const original=`Conflict draft ${Date.now()}`;
