@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Bu içerik başka bir sekmede veya kullanıcı tarafından güncellendi. Yazdığın metin korunuyor. Güncel sürümü Gönderiler ekranından açıp değişikliklerini karşılaştır.':'This post was updated in another tab or by another user. Your text is preserved. Open the latest version from Posts to compare your changes.',
+  'Gönderileri incele':'Review posts',
   'Bu ayki paylaşımlar':'Posts this month',
   'Bu ay için planlı veya yayımlanmış içerik yok.':'No scheduled or published content this month.',
   'Kanallarını seç, içeriğini hazırla ve paylaşım zamanını belirle.':'Choose channels, prepare your content and set a publishing time.',

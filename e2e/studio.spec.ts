@@ -1,5 +1,32 @@
 import {expect,test} from '@playwright/test';
 
+test('an outdated editor preserves text and cannot overwrite a newer save',async({page})=>{
+  await page.goto('/');
+  const original=`Conflict draft ${Date.now()}`;
+  const created=await page.request.post('/api/posts',{data:{
+    requestId:crypto.randomUUID(),text:original,platforms:['x'],send:false,
+  }});
+  expect(created.ok()).toBeTruthy();
+  const {id}=await created.json();
+  await page.reload();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.locator('article').filter({hasText:original}).getByRole('button',{name:'Düzenle',exact:true}).click();
+  const editor=page.locator('#content');
+  await editor.fill('Changes in the older tab');
+  const state=await (await page.request.get('/api/state')).json();
+  const post=state.posts.find((p:any)=>p.id===id);
+  const newer=await page.request.put(`/api/posts/${id}`,{data:{
+    text:'Saved in another tab',platforms:['x'],expected_updated_at:post.updated_at,
+  }});
+  expect(newer.ok()).toBeTruthy();
+  await page.getByRole('button',{name:'Taslağı kaydet',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Yazdığın metin korunuyor.');
+  await expect(editor).toHaveValue('Changes in the older tab');
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeDisabled();
+  const latest=await (await page.request.get('/api/state')).json();
+  expect(latest.posts.find((p:any)=>p.id===id).text).toBe('Saved in another tab');
+});
+
 test('saving locks the editor and a retry reuses the original request',async({page})=>{
   const requests:any[]=[];
   let release!:()=>void;
