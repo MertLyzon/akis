@@ -298,6 +298,15 @@ def test_upload_size_limits_and_no_leftovers(client,monkeypatch):
     assert client.post('/api/media',files={'file':('buyuk.mp4',b'\x00'*(1024*1024+10),'video/mp4')}).status_code==413
     assert set(Path(settings.media_root).iterdir())==before
 
+def test_declared_oversized_upload_is_rejected_before_multipart_parsing(client,monkeypatch):
+    from akis.config import settings
+    monkeypatch.setattr(settings,'max_upload_mb',1)
+    response=client.post('/api/media',content=b'not-even-multipart',headers={
+        'Content-Type':'multipart/form-data; boundary=x',
+        'Content-Length':str(1024*1024+64*1024+1),
+    })
+    assert response.status_code==413 and '1 MB' in response.json()['error']
+
 def test_company_storage_quota_is_enforced_without_leaving_a_file(client,monkeypatch):
     from akis.config import settings
     from pathlib import Path
@@ -311,6 +320,17 @@ def test_company_storage_quota_is_enforced_without_leaving_a_file(client,monkeyp
     assert 'depolama sınırına' in response.json()['error']
     assert set(Path(settings.media_root).iterdir())==before
     assert client.get('/api/company').json()['usage']['storage_limit_bytes']==1024*1024
+
+def test_failed_media_rows_do_not_consume_storage_quota(client,monkeypatch):
+    from akis.config import settings
+    monkeypatch.setattr(settings,'company_storage_mb',1)
+    with Session() as db:
+        db.add(MediaAsset(company_id=a_company(),filename='failed.mp4',storage_key='gone.mp4',mime_type='video/mp4',size=1024*1024,status='failed'))
+        db.commit()
+    response=client.post('/api/media',files=png('replacement.png'))
+    assert response.status_code==202
+    usage=client.get('/api/company').json()['usage']
+    assert 0<usage['storage_bytes']<1024*1024
 
 def test_decompression_bomb_is_refused(client):
     out=io.BytesIO();Image.new('1',(7000,7000)).save(out,'PNG')  # 49 MP, a few KB on disk

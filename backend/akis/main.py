@@ -111,6 +111,14 @@ app.add_middleware(ApiGZip,minimum_size=1024)
 async def guards(req,call_next):
     if settings.local_mode and req.url.hostname not in ('localhost','127.0.0.1','testserver'):
         return JSONResponse({'error':'Yerel mod yalnızca bu bilgisayardan kullanılabilir.'},403)
+    if req.method=='POST' and req.url.path=='/api/media':
+        # Starlette parses multipart data before the endpoint can stream the
+        # UploadFile. Reject obviously oversized requests before that spool.
+        try: request_size=int(req.headers.get('content-length','0'))
+        except ValueError: return JSONResponse({'error':'Geçersiz Content-Length başlığı.'},400)
+        envelope=64*1024
+        if request_size>settings.max_upload_mb*1024*1024+envelope:
+            return JSONResponse({'error':f'Dosya en fazla {settings.max_upload_mb} MB olabilir.'},413)
     if req.method not in ('GET','HEAD','OPTIONS'):
         if req.headers.get('origin','') not in allowed_origins(): return JSONResponse({'error':'İstek kaynağı doğrulanamadı.'},403)
         if req.headers.get('content-type','').startswith('application/json') and b'\\u0000' in (await req.body()).lower(): return JSONResponse({'error':'Metinde geçersiz karakter var.'},400)
@@ -528,7 +536,9 @@ async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
             # simultaneous files cannot both pass against the same stale total.
             db.scalar(select(Company.id).where(Company.id==actor.company_id).with_for_update())
             quota=max(0,settings.company_storage_mb)*1024*1024
-            used=db.scalar(select(func.coalesce(func.sum(MediaAsset.size),0)).where(MediaAsset.company_id==actor.company_id)) or 0
+            # Failed processing removes its files, so those diagnostic rows do
+            # not consume storage quota even when created by an older release.
+            used=db.scalar(select(func.coalesce(func.sum(MediaAsset.size),0)).where(MediaAsset.company_id==actor.company_id,MediaAsset.status!='failed')) or 0
             if quota and used+size>quota: raise HTTPException(413,'Şirket medya depolama sınırına ulaşıldı. Kullanılmayan medyayı silip tekrar dene.')
             a=MediaAsset(id=identifier,company_id=actor.company_id,uploaded_by=actor.user_id,filename=(''.join(ch for ch in Path(file.filename or '').name if ch.isprintable())[:240] or 'medya'),storage_key=path.name,mime_type=mime,size=size,status='processing')
             db.add(a);audit(db,actor,'media.uploaded','media',identifier,filename=a.filename,size=size);db.commit();result=asset_json(a,db)
