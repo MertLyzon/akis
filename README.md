@@ -112,6 +112,9 @@ süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlan
 Şirket başına toplam medya ve üretilen varyantlar varsayılan olarak 500 MB ile
 sınırlıdır. `COMPANY_STORAGE_MB` bu sınırı değiştirir; `0` sınırsız kullanım içindir.
 
+Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
+ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
+
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
 kurmak gerekir. Test çalıştırıcısı mevcutsa proje kökündeki `.venv` Python'unu,

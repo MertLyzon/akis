@@ -1,6 +1,11 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Yüklemeyi durdur':'Stop uploading',
+  'Yükleme durduruldu. Tamamlanan dosyalar kütüphanede kalır.':'Upload stopped. Completed files remain in the library.',
+  'Kuyruktaki {count} dosya başlatılmadı.':'The remaining {count} queued files were not started.',
+  '{count} dosya zaten yükleme sırasında olduğu için tekrar eklenmedi.':'{count} files were already uploading or queued and were not added again.',
+  'Geçerli bir yükleme yanıtı alınamadı. Yeniden yüklemeden önce kütüphaneyi kontrol et.':'The server did not return a valid upload result. Check the library before uploading again.',
   'İşlem sürüyor…':'Processing…',
   'İçeriği reddet':'Reject post',
   'İçeriği sil':'Delete post',
