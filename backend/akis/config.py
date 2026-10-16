@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -40,8 +41,17 @@ class Settings(BaseSettings):
     backup_download_max_mb: int = 500
     # Terminal delivery diagnostics older than this are pruned daily. 0 keeps them indefinitely.
     delivery_attempt_retention_days: int = 90
-    # Origins of the Tauri apps (desktop + mobile webviews). They authenticate with a bearer token, not cookies.
-    app_client_origins: str = 'tauri://localhost,http://tauri.localhost,https://tauri.localhost,http://localhost:1420'
+    # Origins of the Tauri apps (desktop + mobile webviews). Empty selects safe
+    # mode-aware defaults; an explicit value remains available for custom shells.
+    app_client_origins: str = ''
+
+    @model_validator(mode='after')
+    def default_app_client_origins(self):
+        if not self.app_client_origins.strip():
+            origins=['tauri://localhost','http://tauri.localhost','https://tauri.localhost']
+            if self.local_mode: origins.append('http://localhost:1420')
+            self.app_client_origins=','.join(origins)
+        return self
 
 settings = Settings()
 # Empty DATABASE_URL in .env means "use the default" (SQLite locally, Compose sets its own).

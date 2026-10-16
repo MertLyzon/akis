@@ -124,7 +124,7 @@ Yerel SQLite veritabanı ve Compose PostgreSQL veritabanı ayrıdır. Docker ilk
 
 Windows, macOS, Linux ve Android uygulamaları [Tauri 2](https://tauri.app) ile aynı React arayüzünden üretilir (`src-tauri/`). Arayüz uygulamanın içinde gelir; veriler şirketin **barındırılan Akış sunucusunda** durur. Uygulama ilk açılışta sunucu adresini sorar (ör. `https://akis.sirketin.com`) ve web sürümüyle aynı hesaplarla giriş yapılır.
 
-- Uygulamalar çerez yerine imzalı oturum anahtarıyla (`Authorization: Bearer`) çalışır; anahtar parola veya 2FA değişince geçersiz olur. Sunucu yalnızca `APP_CLIENT_ORIGINS` listesindeki uygulama kaynaklarına CORS izni verir.
+- Uygulamalar çerez yerine imzalı oturum anahtarıyla (`Authorization: Bearer`) çalışır; anahtar parola veya 2FA değişince geçersiz olur. Sunucu yalnızca `APP_CLIENT_ORIGINS` listesindeki uygulama kaynaklarına CORS izni verir. Değer boş bırakılırsa gerçek Tauri webview kaynakları otomatik açılır; geliştirme sunucusu `http://localhost:1420` yalnız `LOCAL_MODE=true` iken eklenir.
 - Sosyal medya hesabı bağlama (OAuth) güvenlik nedeniyle sistem tarayıcısında, web sürümünde yapılır; uygulama o sayfayı açar.
 - Telefonlar düz `http://` adreslerine bağlanmaz; sunucunun HTTPS olması gerekir.
 
