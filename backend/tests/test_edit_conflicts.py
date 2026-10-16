@@ -89,3 +89,74 @@ def test_rejection_invalidates_the_open_editor(client):
     current=snapshot(client,original['id'])
     assert current['status']=='rejected' and current['review_note']=='Review changes'
 
+
+def pending_review(client):
+    original=draft(client)
+    with Session() as db:
+        db.get(Content,original['id']).status='pending_approval'
+        db.commit()
+    return snapshot(client,original['id'])
+
+
+def test_approval_cannot_publish_content_changed_since_review(client):
+    client.post('/api/connections',json={'platform':'x','token':'fake'})
+    original=pending_review(client)
+    assert edit(client,original,'Changed after review').status_code==200
+    with Session() as db:
+        db.get(Content,original['id']).status='pending_approval'
+        db.commit()
+    response=client.post(f"/api/posts/{original['id']}/approve",json={'expected_updated_at':original['updated_at']})
+    assert response.status_code==409
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(ContentPlatform))==0
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.target_id==original['id'],AuditLog.action=='content.approved',
+        ))==0
+    current=snapshot(client,original['id'])
+    assert client.post(f"/api/posts/{original['id']}/approve",json={'expected_updated_at':current['updated_at']}).status_code==200
+
+
+def test_simultaneous_approvals_queue_only_one_delivery(client):
+    client.post('/api/connections',json={'platform':'x','token':'fake'})
+    original=pending_review(client)
+    barrier=Barrier(2)
+    def approve(_):
+        barrier.wait(timeout=10)
+        return client.post(f"/api/posts/{original['id']}/approve",json={'expected_updated_at':original['updated_at']}).status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes=list(pool.map(approve,range(2)))
+    assert sorted(codes)==[200,409]
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(ContentPlatform))==1
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.target_id==original['id'],AuditLog.action=='content.approved',
+        ))==1
+
+
+def test_approval_and_rejection_cannot_both_win(client):
+    client.post('/api/connections',json={'platform':'x','token':'fake'})
+    original=pending_review(client)
+    barrier=Barrier(2)
+    def review(action):
+        barrier.wait(timeout=10)
+        response=client.post(f"/api/posts/{original['id']}/{action}",json={'expected_updated_at':original['updated_at'],'note':'Review decision'})
+        return action,response.status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results=list(pool.map(review,['approve','reject']))
+    assert sorted(code for _,code in results)==[200,409]
+    winner=next(action for action,code in results if code==200)
+    current=snapshot(client,original['id'])
+    assert current['status']==('processing' if winner=='approve' else 'rejected')
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(ContentPlatform))==(1 if winner=='approve' else 0)
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(
+            AuditLog.target_id==original['id'],AuditLog.action.in_(['content.approved','content.rejected']),
+        ))==1
+
+
+def test_failed_review_validation_does_not_advance_version(client):
+    original=pending_review(client)
+    assert client.post(f"/api/posts/{original['id']}/reject",json={'note':'   ','expected_updated_at':original['updated_at']}).status_code==400
+    assert client.post(f"/api/posts/{original['id']}/approve",json={'expected_updated_at':original['updated_at']}).status_code==400
+    assert snapshot(client,original['id'])['updated_at']==original['updated_at']
+

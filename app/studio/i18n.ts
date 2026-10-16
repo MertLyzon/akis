@@ -1,6 +1,10 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İşlem sürüyor…':'Processing…',
+  'İçeriği reddet':'Reject post',
+  'İçeriği sil':'Delete post',
+  'İçerik bu sırada değişti. Listeyi yenileyip güncel içerik üzerinden tekrar dene.':'This post changed while you were working. Refresh the list and try again with the latest version.',
   'Kaydedilmemiş değişiklikler':'Unsaved changes',
   'Düzenlemeye devam et':'Keep editing',
   'Değişiklikleri bırak':'Discard changes',

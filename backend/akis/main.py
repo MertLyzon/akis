@@ -730,32 +730,37 @@ def company_content(db,identifier,actor):
     if not p or p.company_id!=actor.company_id: raise HTTPException(404,'İçerik bulunamadı.')
     return p
 
+def claim_content_version(db,p,expected=None,conflict='İçerik bu sırada değişti. Listeyi yenileyip güncel içerik üzerinden tekrar dene.'):
+    if expected is not None and expected!=p.updated_at: raise HTTPException(409,conflict)
+    # Lock the version atomically, including saves within the same clock second.
+    claimed=db.execute(update(Content).where(Content.id==p.id,Content.company_id==p.company_id,Content.updated_at==p.updated_at,Content.status==p.status).values(updated_at=max(now(),p.updated_at+1)))
+    if claimed.rowcount!=1: raise HTTPException(409,conflict)
+
 @app.put('/api/posts/{identifier}')
 def edit_content(identifier:str,data:ContentEditInput,background:BackgroundTasks,actor=Depends(require('compose'))):
     with Session() as db:
         p=company_content(db,identifier,actor)
         conflict='Bu içerik başka bir sekmede veya kullanıcı tarafından güncellendi. Yazdığın metin korunuyor. Güncel sürümü Gönderiler ekranından açıp değişikliklerini karşılaştır.'
-        if data.expected_updated_at is not None and data.expected_updated_at!=p.updated_at: raise HTTPException(409,conflict)
+        claim_content_version(db,p,data.expected_updated_at,conflict)
         if p.status not in ('draft','rejected','pending_approval'): raise HTTPException(400,'Yalnızca taslak, reddedilen veya onay bekleyen içerikler düzenlenebilir.')
-        # Claim the version before changing content or queuing deliveries. The monotonic
-        # timestamp also distinguishes two saves made within the same clock second.
-        claimed=db.execute(update(Content).where(Content.id==identifier,Content.company_id==actor.company_id,Content.updated_at==p.updated_at,Content.status==p.status).values(updated_at=max(now(),p.updated_at+1)))
-        if claimed.rowcount!=1: raise HTTPException(409,conflict)
         outcome=apply_input(db,p,data,actor,db.get(Company,actor.company_id))
         audit(db,actor,'content.edited','content',identifier,outcome=outcome);db.commit()
     after_commit(background,identifier,outcome)
     return {'id':identifier,'outcome':outcome}
 
-class ReviewInput(BaseModel): note:str=Field(default='',max_length=1000)
+class ReviewInput(BaseModel):
+    note:str=Field(default='',max_length=1000)
+    expected_updated_at:int|None=Field(default=None,ge=0)
 
 @app.post('/api/posts/{identifier}/approve')
 def approve_content(identifier:str,data:ReviewInput,background:BackgroundTasks,actor=Depends(require('approve'))):
     with Session() as db:
         p=company_content(db,identifier,actor)
+        claim_content_version(db,p,data.expected_updated_at)
         if p.status!='pending_approval': raise HTTPException(400,'Bu içerik onay beklemiyor.')
         if p.scheduled_at and p.scheduled_at<now()-60: raise HTTPException(400,'Planlanan zaman geçti. İçeriği düzenleyip yeni bir zaman seç.')
         validate_send(db,actor.company_id,p.platforms,p.body_text,db.get(MediaAsset,p.asset_id) if p.asset_id else None,{**{'recipients':[],'wa_mode':'template','template':'','language':'tr','session_confirmed':False},**p.options})
-        queue_deliveries(db,p,actor);p.review_note=data.note.strip();p.updated_at=max(now(),p.updated_at+1)
+        queue_deliveries(db,p,actor);p.review_note=data.note.strip()
         audit(db,actor,'content.approved','content',identifier,note=p.review_note,scheduled_at=p.scheduled_at);db.commit()
     after_commit(background,identifier,'approved')
     return {'ok':True}
@@ -765,8 +770,9 @@ def reject_content(identifier:str,data:ReviewInput,actor=Depends(require('approv
     if not data.note.strip(): raise HTTPException(400,'Reddetme nedenini yaz; editör neyi düzelteceğini bilsin.')
     with Session() as db:
         p=company_content(db,identifier,actor)
+        claim_content_version(db,p,data.expected_updated_at)
         if p.status!='pending_approval': raise HTTPException(400,'Bu içerik onay beklemiyor.')
-        p.status='rejected';p.review_note=data.note.strip();p.updated_at=max(now(),p.updated_at+1)
+        p.status='rejected';p.review_note=data.note.strip()
         audit(db,actor,'content.rejected','content',identifier,note=p.review_note);db.commit()
     return {'ok':True}
 
