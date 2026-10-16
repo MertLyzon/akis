@@ -112,7 +112,7 @@ Otomatik = pytest/betik; Manuel = tarayıcı/ortam.
 | 6 | Şirket izolasyonu | PASS | — | Sistem yöneticisi (üyesiz şirkete 403) + B'nin 4 rolü; GET/POST/PATCH/PUT/DELETE |
 | 7 | Kullanıcı ekleme | PASS | PASS | P1-4 davet akışıyla kapatıldı; kalan dolaylı tespit riski belgelendi |
 | 8 | CSRF, CORS, origin | PASS | — | tüm yazma uçları × eksik/null/sahte/benzer origin → 403; CORS credentials yok; GET'ler durum değiştirmiyor (yerel kip otomatik girişi ve OAuth callback tasarım gereği hariç) |
-| 9 | Dosya yükleme | PASS | — | sahte MIME (HTML/SVG/PHP/bozuk), path traversal, boş/sınır/aşım, bomba, bozuk video, yarım yükleme, eşzamanlı aynı dosya. Çoklu yükleme kısmi hata: arayüzde dosya adıyla (manuel kod incelemesi) |
+| 9 | Dosya yükleme | PASS | — | sahte MIME (HTML/SVG/PHP/bozuk), path traversal, boş/sınır/aşım, multipart öncesi boyut reddi, bomba, bozuk video, yarım yükleme, eşzamanlı aynı dosya. Başarısız işlenip silinen medya şirket kotasına dahil değil. Çoklu yükleme kısmi hata: arayüzde dosya adıyla (manuel kod incelemesi) |
 | 10 | Cloudinary / dış kaynak | PASS | PASS (CSP altında demo görsel yüklendi) | KEEP_LOCAL_MEDIA true/false ayrı test |
 | 11 | SQL, XSS, doğrulama | PASS | PASS | Stored XSS: içerik, şirket adı, üye adı, dosya adı, klasör, etiket — 5 ekranda metin olarak görünüyor, çalışmıyor |
 | 12 | Güvenlik başlıkları | PASS (FastAPI) | PASS (tarayıcı CSP, Cloudinary + imzalı medya) · nginx NOT TESTED | HSTS yalnız HTTPS origin'de |

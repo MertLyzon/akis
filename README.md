@@ -17,7 +17,7 @@ Türkçe, çok şirketli sosyal medya uygulaması. React arayüzü; FastAPI, SQL
 
 ## Önceki sürümden gelen özellikler
 
-- Sürükle-bırak veya dosyadan seçimle 100 MB'a kadar medya yükleme. Dosyalar kendi sunucunuzun kalıcı diskinde tutulur.
+- Sürükle-bırak veya dosyadan seçimle 100 MB'a kadar medya yükleme. İstek boyutu multipart ayrıştırılmadan önce de denetlenir; şirket kotasında yalnız gerçekten saklanan medya sayılır, başarısız işlenip silinen dosyalar kotayı tüketmez. Dosyalar kendi sunucunuzun kalıcı diskinde tutulur.
 - HEIC/WebP dahil görselleri JPEG'e dönüştürme, yön düzeltme, Instagram için 4:5–1.91:1 oranı ve en fazla 1920×1080. Görsel kesilmez; gerektiğinde boşluk eklenir.
 - TikTok için görselden 4 saniyelik, 1080×1920 H.264/AAC ve sessiz ses kanallı video üretme. Videolar da uygun biçime dönüştürülür.
 - X parçalı medya yükleme; Instagram medya hazırlığını arka planda takip ederek yayımlama; TikTok doğrudan dosya aktarımı; WhatsApp medya, şablon parametreleri ve çoklu alıcı.
