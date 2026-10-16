@@ -189,13 +189,18 @@ def session(req:Request):
     app_client=req.headers.get('x-akis-client')=='app'
     if req.headers.get('sec-fetch-site')=='cross-site' and not app_client: raise HTTPException(403,'İstek kaynağı doğrulanamadı.')
     with Session() as db:
+        presented=bool(session_token(req))
         user=session_user(db,req);fresh=False
-        if not user and settings.local_mode and not app_client:
-            # Loopback-only convenience: sign in as the first system admin. Log out to test other users.
+        if not user and settings.local_mode and not app_client and not presented:
+            # Loopback-only convenience is for a fresh browser only. An invalid,
+            # expired or disabled user's session must never become an admin one.
             ensure_bootstrap();user=first_system_admin(db);fresh=bool(user) and req.cookies.get('akis_logged_out')!='1'
             if not fresh: user=None
         r=JSONResponse({'authenticated':bool(user),'local':settings.local_mode,'queue':settings.queue_mode,'storage':'cloudinary' if storage.enabled() else 'local','user':me_json(db,user) if user else None})
         if fresh: set_session(r,user)
+        elif presented and not user and not app_client:
+            r.delete_cookie('akis_session')
+            r.set_cookie('akis_logged_out','1',httponly=True,samesite='lax',max_age=43200)
         return r
 
 def claim_totp_step(db,user,step):

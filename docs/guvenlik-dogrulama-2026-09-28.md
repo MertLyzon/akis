@@ -92,7 +92,7 @@ Yok.
 | P3-5 | Gizli dosya girdisi fazladan Tab durağı oluşturuyordu | FIXED (`MediaUpload.tsx`) |
 | P3-6 | "Kopyala" kaydedilmemiş taslağı sessizce eziyordu | FIXED — onay sorusu |
 | P3-7 | Çoklu yüklemede hata/başarı bildirimleri hangi dosyaya ait olduğunu söylemiyordu | FIXED — dosya adıyla |
-| P3-8 | Yerel kipte süresi dolan/devre dışı kullanıcının oturumu sistem yöneticisi otomatik girişine düşüyor | OPEN — tasarım gereği (yalnız loopback); dokümante edildi |
+| P3-8 | Yerel kipte süresi dolan/devre dışı kullanıcının oturumu sistem yöneticisi otomatik girişine düşüyor | **RESOLVED** — otomatik giriş yalnız çerezi olmayan ilk tarayıcıda çalışıyor; geçersiz oturum temizlenip yeniden otomatik giriş engelleniyor. |
 | P3-9 | Şirket başına depolama kotası yok (editör diski doldurabilir) | **RESOLVED** — `COMPANY_STORAGE_MB` ile kaynak ve türetilmiş medyanın toplamı şirket bazında sınırlandırılıyor; yarışlar şirket satırı kilitlenerek engelleniyor ve kullanım arayüzde gösteriliyor. |
 | P3-10 | `/api/state` 304 yalnız bant genişliğini azaltıyor; sunucu yine tüm durumu hesaplıyor (~190 ms / 300 gönderi) | **RESOLVED** — kullanıcı/şirket/rol kapsamlı, 256 kayıtla sınırlı süreç içi ETag kısa yolu eklendi. Başarılı yazmalar önbelleği anında temizliyor; 5 saniyelik süre, etkin iş akışında bir sorguyu atlayıp işçi güncellemelerini izleyen tam kontrolde yakalıyor. Yanıt gövdeleri önbelleğe alınmıyor. |
 | P3-11 | Rust bağımlılıkları: `glib 0.18.5` (RUSTSEC-2024-0429, yalnız Linux), `proc-macro-error` bakımsız (RUSTSEC-2024-0370) | OPEN — Tauri'nin dolaylı bağımlılığı |
