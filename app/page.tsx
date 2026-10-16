@@ -1,4 +1,4 @@
-import {lazy,Suspense,useEffect,useState,useRef,useCallback} from 'react';
+import {lazy,Suspense,useEffect,useLayoutEffect,useState,useRef,useCallback} from 'react';
 import {Send,Layers3,Link2,FileText,Plus,Check,ShieldCheck,Radio,Loader2,Settings2,RefreshCw,CalendarDays,Images,Users,Server,UserRound,LogOut,CalendarClock,X,Search} from 'lucide-react';
 import {SidebarProvider,Sidebar,SidebarContent,SidebarHeader,SidebarFooter,SidebarMenu,SidebarMenuItem,SidebarInset,SidebarTrigger} from '@/components/ui/sidebar';
 import SidebarMenuButton from './studio/NavigationButton';
@@ -34,6 +34,7 @@ const [view,setView]=useState('compose'),[text,setText]=useState(''),[selected,s
 const [hourFormat,setHourFormat]=useState<HourFormat>(readHourFormat);
 const [uiLanguage,setUiLanguage]=useState<Language>(readLanguage),[commandOpen,setCommandOpen]=useState(false),[draftSaved,setDraftSaved]=useState(false);
 const request=useRef({fingerprint:'',id:''});
+const restoredDraftKey=useRef('');
 const refreshInFlight=useRef(false);
 const refreshQueued=useRef(false),refreshContext=useRef(0);
 const [invite,setInvite]=useState(inviteToken);
@@ -48,8 +49,15 @@ useEffect(()=>{function shortcut(event:KeyboardEvent){if(session?.authenticated&
 useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();try{Promise.resolve(context.registerTool({name:'stage_content',description:'Prepare text in the content editor without saving or publishing.',inputSchema:{type:'object',properties:{text:{type:'string',maxLength:5000}},required:['text'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:any){if(typeof input?.text!=='string'||input.text.length>5000)throw Error(t('Geçersiz metin'));setText(input.text);setView('compose');return {staged:true,published:false}}},{signal:life.signal})).catch(()=>{})}catch{}return()=>life.abort()},[]);
 // One unsent draft per person and company; removed on sign-out so a shared computer does not show it to the next user.
 const draftKey=state.company?.id&&session?.user?.id?`akis-draft:${session.user.id}:${state.company.id}`:'';
-useEffect(()=>{if(!draftKey||editing)return;try{const saved=localStorage.getItem(draftKey);if(saved&&!text){setText(saved);toast.info(t('Kaydedilmemiş metnin geri yüklendi.'))}}catch{}},[draftKey,editing]);
-useEffect(()=>{if(!draftKey||editing)return;setDraftSaved(false);const id=setTimeout(()=>{try{text.trim()?localStorage.setItem(draftKey,text):localStorage.removeItem(draftKey);setDraftSaved(!!text.trim())}catch{}},400);return()=>clearTimeout(id)},[text,draftKey,editing]);
+// Restore before writing, and flush each edit before another browser interaction can navigate away.
+useLayoutEffect(()=>{
+if(!draftKey||editing){restoredDraftKey.current='';return}
+setDraftSaved(false);
+try{
+if(restoredDraftKey.current!==draftKey){restoredDraftKey.current=draftKey;const saved=localStorage.getItem(draftKey);if(saved&&!text){setText(saved);toast.info(t('Kaydedilmemiş metnin geri yüklendi.'));return}}
+text.trim()?localStorage.setItem(draftKey,text):localStorage.removeItem(draftKey);setDraftSaved(!!text.trim());
+}catch{}
+},[text,draftKey,editing]);
 const perms:string[]=state.me?.permissions||[];const can=useCallback((p:string)=>perms.includes(p),[perms.join()]);
 const tz=state.company?.timezone||'Europe/Istanbul';
 const asset=state.assets.find((a:any)=>a.id===assetId)||(uploaded?.id===assetId?uploaded:null);
