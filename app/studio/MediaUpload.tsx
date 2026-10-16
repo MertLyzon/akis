@@ -6,13 +6,14 @@ import {t} from './i18n';
 
 const acceptedMedia='image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm';
 
-export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,onLibrary,multiple=false}:any){
+export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,onLibrary,multiple=false,disabled=false}:any){
   const input=useRef<HTMLInputElement>(null);
   const [progress,setProgress]=useState<number|null>(null),[drag,setDrag]=useState(false),[queued,setQueued]=useState(0);
   const queue=useRef<File[]>([]);
 
   // Library accepts several files at once; they upload one after another with the same progress bar.
   function enqueue(files:File[]){
+    if(disabled)return;
     const fits=files.filter(f=>f.size<=maxMB*1024*1024);
     if(fits.length<files.length)toast.error(t('{count} dosya {max} MB sınırını aştığı için atlandı.',{count:files.length-fits.length,max:maxMB}));
     if(!fits.length)return;
@@ -23,7 +24,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
   function next(){const file=queue.current.shift();setQueued(queue.current.length);if(file)upload(file,true)}
 
   function upload(file?:File,fromQueue=false){
-    if(!file||(progress!==null&&!fromQueue))return;
+    if(disabled||!file||(progress!==null&&!fromQueue))return;
     if(file.size>maxMB*1024*1024){toast.error(t('Dosya en fazla {max} MB olabilir.',{max:maxMB}));return}
     const data=new FormData();data.append('file',file,file.name);
     setProgress(0);onBusy(true);
@@ -41,7 +42,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
   }
 
   function choose(){
-    if(!input.current||progress!==null)return;
+    if(disabled||!input.current||progress!==null)return;
     // Safari does not emit change when the same file is selected twice unless the old value is cleared first.
     input.current.value='';
     input.current.click();

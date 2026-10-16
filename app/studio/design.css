@@ -97,6 +97,7 @@
 :root[data-theme] :is(.panel-head,.editor-footer,.post-item,.page-footer,.social-profile,.table-wrap,td,th,.audit-list li) { border-color: var(--border); }
 .editor-grid { grid-template-columns: minmax(0,1.5fr) minmax(300px,1fr); gap: 24px; }
 .editor-body { padding: 20px; }
+.editor-fields { display: contents; }
 .editor-footer { padding: 16px 20px; flex-wrap: wrap; }
 :root[data-theme] :is(input,textarea,select) { background: var(--card); color: var(--foreground); border-color: var(--input); border-radius: 7px; }
 :root[data-theme] :is(input,textarea)::placeholder { color: var(--text-soft); opacity: 1; }
