@@ -1,4 +1,8 @@
 import {defineConfig,devices} from '@playwright/test';
+import {existsSync} from 'node:fs';
+
+const virtualenvPython=process.platform==='win32'?'.venv\\Scripts\\python.exe':'.venv/bin/python';
+const pythonCommand=existsSync(virtualenvPython)?virtualenvPython:(process.platform==='win32'?'python':'python3');
 
 export default defineConfig({
   testDir:'./e2e',
@@ -11,7 +15,7 @@ export default defineConfig({
     ...devices['Desktop Chrome']
   },
   webServer:{
-    command:'python scripts/e2e_server.py',
+    command:`${pythonCommand} scripts/e2e_server.py`,
     url:'http://127.0.0.1:5173/api/health',
     reuseExistingServer:false,
     timeout:120_000
