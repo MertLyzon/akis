@@ -1,5 +1,47 @@
 import {expect,test} from '@playwright/test';
 
+test('system administration preserves failed forms and never starts backups automatically',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/system/overview')).json();
+  delete snapshot.backup_policy;
+  const company={...snapshot.companies[0],id:'test-system-company',name:'Test system company',disabled:false};
+  snapshot.companies=[company];
+  let creates=0,toggles=0,backups=0,failRefresh=false;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/system/overview',route=>failRefresh?route.fulfill({status:503,json:{error:'Overview temporarily unavailable'}}):route.fulfill({json:snapshot}));
+  await page.route('**/api/system/backup',route=>{backups++;return route.fulfill({json:{verified:true,file:'test-only.backup'}})});
+  await page.route('**/api/system/companies',async route=>{
+    creates++;expect(route.request().postDataJSON()).toMatchObject({name:'New test company',admin_email:'system-test@example.com'});
+    if(creates===1){await held;return route.fulfill({status:503,json:{error:'Company temporarily unavailable'}})}
+    failRefresh=true;return route.fulfill({json:{id:'test-new-company',admin_email:'system-test@example.com',temporary_password:'test-only-password'}});
+  });
+  await page.route('**/api/system/companies/test-system-company',route=>{toggles++;company.disabled=true;return route.fulfill({json:{ok:true}})});
+  await page.getByRole('button',{name:'Sistem yönetimi',exact:true}).click();
+  await expect(page.getByText('Yedekleme politikası alınamadı. Otomatik yedekleme durumu bilinmiyor.',{exact:false})).toBeVisible();
+  const form=page.getByRole('form',{name:'Şirket oluştur',exact:true});
+  await form.getByPlaceholder('Şirket adı',{exact:true}).fill('New test company');
+  await form.getByPlaceholder('Şirket yöneticisinin e-postası',{exact:true}).fill('system-test@example.com');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>creates).toBe(1);
+  await expect(page.getByRole('button',{name:'Şimdi yedek al ve doğrula',exact:true})).toBeDisabled();release();
+  await expect(form.getByPlaceholder('Şirket adı',{exact:true})).toBeEnabled();
+  await expect(form.getByPlaceholder('Şirket adı',{exact:true})).toHaveValue('New test company');
+  await form.getByRole('button',{name:'Şirket oluştur',exact:true}).click();
+  await expect(page.locator('.secret-card code')).toHaveText('test-only-password');
+  await expect(form.getByPlaceholder('Şirket adı',{exact:true})).toHaveValue('');
+  await expect(page.getByRole('alert').filter({hasText:'Overview temporarily unavailable'})).toBeVisible();
+  failRefresh=false;await page.getByRole('button',{name:'Tekrar dene',exact:true}).click();
+  const row=page.getByRole('row').filter({hasText:'Test system company'});
+  await row.getByRole('button',{name:'Askıya al',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();expect(toggles).toBe(0);
+  await row.getByRole('button',{name:'Askıya al',exact:true}).click();
+  await modal.getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect(modal).toBeHidden();await expect(row.getByRole('button',{name:'Yeniden aç',exact:true})).toBeVisible();
+  expect(creates).toBe(2);expect(toggles).toBe(1);expect(backups).toBe(0);
+});
+
 test('login preserves credentials after failure and locks the two-factor step',async({page})=>{
   await page.goto('/');
   const session=await (await page.request.get('/api/session')).json();

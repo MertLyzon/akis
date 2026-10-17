@@ -66,6 +66,8 @@ jobs:
         run: npm run test:account
       - name: Login and invitation guards
         run: npm run test:auth
+      - name: System maintenance guards
+        run: npm run test:system
       - name: Install browser smoke-test runtime
         run: npx playwright install --with-deps chromium
       - name: Browser smoke tests
