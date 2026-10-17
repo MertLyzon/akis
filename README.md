@@ -112,6 +112,7 @@ süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlan
 Şirket başına toplam medya ve üretilen varyantlar varsayılan olarak 500 MB ile
 sınırlıdır. `COMPANY_STORAGE_MB` bu sınırı değiştirir; `0` sınırsız kullanım içindir.
 
+Kütüphanede eşzamanlı işlem ve eski arama yanıtı korumaları `npm run test:library` ile doğrulanır.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 
