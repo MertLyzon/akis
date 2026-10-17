@@ -1,7 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizedTotpCode,parseTotpSetup} from '../app/studio/accountSecurity.ts';
+import {accountFormChanged,normalizedTotpCode,parseTotpSetup} from '../app/studio/accountSecurity.ts';
 import {KeyedActions} from '../app/studio/libraryRequests.ts';
+
+const emptyPassword={current:'',next:'',again:''},emptyDisable={password:'',code:''};
+test('empty account forms and an opened but untouched disable form remain clean',()=>{
+  assert.equal(accountFormChanged(emptyPassword,emptyDisable,false),false);
+  assert.equal(accountFormChanged(emptyPassword,emptyDisable,true),false);
+});
+for(const key of Object.keys(emptyPassword))test(`an unsaved password ${key} field warns until cleared`,()=>{
+  assert.equal(accountFormChanged({...emptyPassword,[key]:'test-only-value'},emptyDisable,false),true);
+  assert.equal(accountFormChanged(emptyPassword,emptyDisable,false),false);
+});
+for(const key of Object.keys(emptyDisable))test(`an unsaved 2FA disable ${key} field warns only while its form is open`,()=>{
+  const draft={...emptyDisable,[key]:'test-only-value'};
+  assert.equal(accountFormChanged(emptyPassword,draft,true),true);
+  assert.equal(accountFormChanged(emptyPassword,draft,false),false);
+});
+test('clearing one account form does not hide edits in another',()=>{
+  assert.equal(accountFormChanged({...emptyPassword,next:'test-only-value'},emptyDisable,false),true);
+  assert.equal(accountFormChanged(emptyPassword,{...emptyDisable,code:'123456'},true),true);
+  assert.deepEqual(emptyPassword,{current:'',next:'',again:''});
+});
 
 for(const value of ['012345','012 345','012-345',' 012345 '])test(`six-digit OTP accepts supported formatting (${value.length} characters: ${JSON.stringify(value)})`,()=>{
   assert.equal(normalizedTotpCode(value),'012345');

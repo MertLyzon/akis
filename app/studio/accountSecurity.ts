@@ -1,3 +1,7 @@
+export function accountFormChanged(password:{current:string;next:string;again:string},disable:{password:string;code:string},disableOpen:boolean){
+  return !!(password.current||password.next||password.again||(disableOpen&&(disable.password||disable.code)));
+}
+
 export function normalizedTotpCode(value:string):string|null{
   const code=value.replace(/[ -]/g,'');
   return /^[0-9]{6}$/.test(code)?code:null;
