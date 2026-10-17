@@ -1,5 +1,41 @@
 import {expect,test} from '@playwright/test';
 
+for(const [date,message] of [
+  ['2027-03-28','Bu saat, şirketin saat dilimindeki saat değişimi nedeniyle mevcut değil. Başka bir saat seç.'],
+  ['2027-10-31','Bu saat, şirketin saat dilimindeki saat değişiminde iki kez yaşanıyor. Başka bir saat seç.'],
+])test(`a rejected clock-change schedule on ${date} preserves the editor for correction`,async({page})=>{
+  await page.clock.setFixedTime(new Date('2027-01-01T00:00:00Z'));
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  snapshot.company.timezone='Europe/Berlin';
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  let requests=0;
+  await page.route('**/api/posts',route=>{
+    requests++;
+    const body=route.request().postDataJSON();
+    expect(body.text).toBe('Clock change test');
+    expect(body.scheduled_local).toBe(`${date}T${requests===1?'02':'03'}:30`);
+    return route.fulfill(requests===1?{status:400,json:{error:message}}:{status:202,json:{id:'test-clock-change',outcome:'approved'}});
+  });
+  await page.reload();
+  await page.locator('#content').fill('Clock change test');
+  await page.getByRole('tab',{name:'İleri tarihte',exact:true}).click();
+  await page.getByLabel('Paylaşım tarihi',{exact:true}).fill(date);
+  await page.getByRole('combobox',{name:'Saat',exact:true}).selectOption('02');
+  await page.getByRole('combobox',{name:'Dakika',exact:true}).selectOption('30');
+  await page.getByRole('button',{name:'Planla',exact:true}).click();
+  await expect(page.getByText(message,{exact:true})).toBeVisible();
+  await expect(page.locator('#content')).toHaveValue('Clock change test');
+  await expect(page.getByLabel('Paylaşım tarihi',{exact:true})).toHaveValue(date);
+  await expect(page.getByRole('combobox',{name:'Saat',exact:true})).toHaveValue('02');
+  await expect(page.getByRole('button',{name:'Planla',exact:true})).toBeEnabled();
+  expect(requests).toBe(1);
+  await page.getByRole('combobox',{name:'Saat',exact:true}).selectOption('03');
+  await page.getByRole('button',{name:'Planla',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Gönderiler',exact:true})).toBeVisible();
+  expect(requests).toBe(2);
+});
+
 test('company refresh preserves edits and saving one form does not discard an invitation',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/company')).json();

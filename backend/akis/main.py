@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit,quote,unquote
 from uuid import UUID,uuid4
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
 from fastapi import FastAPI,Request,HTTPException,Depends,UploadFile,File,BackgroundTasks,Path as Path_
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse,FileResponse,RedirectResponse,Response
@@ -645,11 +645,23 @@ class ContentEditInput(ContentInput):
 def schedule_epoch(value,timezone):
     """'YYYY-MM-DDTHH:MM' in the company's timezone → unix seconds. Empty means now."""
     if not value: return None
-    try: moment=datetime.strptime(value,'%Y-%m-%dT%H:%M').replace(tzinfo=ZoneInfo(timezone))
+    try: local=datetime.strptime(value,'%Y-%m-%dT%H:%M')
     except ValueError: raise HTTPException(400,'Paylaşım zamanını YYYY-AA-GGTSS:DD biçiminde gir.')
-    stamp=int(moment.timestamp())
-    if stamp<now()-60: raise HTTPException(400,'Paylaşım zamanı geçmişte olamaz.')
-    if stamp>now()+86400*365: raise HTTPException(400,'Paylaşım en fazla bir yıl sonrasına planlanabilir.')
+    try: zone=ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError,ValueError): raise HTTPException(400,'Şirketin saat dilimi geçersiz. Şirket ayarlarını kontrol et.')
+    # Attaching ZoneInfo alone silently accepts clock-change gaps and picks one
+    # occurrence of repeated times. Only an unambiguous round trip is safe to publish.
+    candidates=set()
+    try:
+        for fold in (0,1):
+            candidate=int(local.replace(tzinfo=zone,fold=fold).timestamp())
+            if datetime.fromtimestamp(candidate,zone).replace(tzinfo=None)==local: candidates.add(candidate)
+    except (ValueError,OverflowError,OSError): raise HTTPException(400,'Paylaşım zamanını YYYY-AA-GGTSS:DD biçiminde gir.')
+    if not candidates: raise HTTPException(400,'Bu saat, şirketin saat dilimindeki saat değişimi nedeniyle mevcut değil. Başka bir saat seç.')
+    if len(candidates)>1: raise HTTPException(400,'Bu saat, şirketin saat dilimindeki saat değişiminde iki kez yaşanıyor. Başka bir saat seç.')
+    stamp=candidates.pop();current=now()
+    if stamp<current-60: raise HTTPException(400,'Paylaşım zamanı geçmişte olamaz.')
+    if stamp>current+86400*365: raise HTTPException(400,'Paylaşım en fazla bir yıl sonrasına planlanabilir.')
     return stamp
 
 def validate_send(db,company_id,platforms,text,asset,options):
