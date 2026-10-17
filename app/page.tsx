@@ -173,7 +173,7 @@ return <NavigationContext value={reportNavigation}><SidebarProvider><Sidebar cla
 {view==='posts'&&<Posts key={postFilter} posts={state.posts} loading={loading} refresh={refresh} can={can} tz={tz} onEdit={openDraft} onDuplicate={can('compose')?duplicate:undefined} initialFilter={postFilter}/>}
 {view==='calendar'&&<Calendar posts={state.posts} tz={tz} can={can} onCompose={composeAt} onEdit={openDraft}/>}
 {view==='library'&&<Library can={can} maxMB={state.settings.max_upload_mb} onBusy={setUploading} onUse={can('compose')?(a:any)=>startContent('',a):undefined}/>}
-{view==='connections'&&can('connections')&&<Connections connections={state.connections} settings={state.settings} refresh={refresh} onSettings={()=>setView('settings')}/>}{view==='settings'&&can('settings')&&<Settings settings={state.settings} refresh={refresh} hourFormat={hourFormat} onHourFormat={changeHourFormat} language={uiLanguage} onLanguage={changeLanguage}/>}
+{view==='connections'&&can('connections')&&<Connections connections={state.connections} settings={state.settings} refresh={refresh} onSettings={()=>goView('settings')}/>}{view==='settings'&&can('settings')&&<Settings settings={state.settings} refresh={refresh} hourFormat={hourFormat} onHourFormat={changeHourFormat} language={uiLanguage} onLanguage={changeLanguage}/>}
 {view==='team'&&can('members')&&<Team tz={tz} can={can} me={user} refreshState={refresh} onNavigationState={teamNavigation}/>}
 {view==='system'&&user.is_system_admin&&<System settings={state.settings} refreshState={loadSession} onNavigationState={systemNavigation}/>}
 {view==='account'&&<Account me={user} refreshSession={loadSession} onNavigationState={accountNavigation}/>}

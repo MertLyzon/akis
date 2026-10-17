@@ -1,5 +1,65 @@
 import {expect,test} from '@playwright/test';
 
+test('connection settings shortcut confirms before discarding unsaved access details',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  snapshot.settings.oauth_apps=[];snapshot.connections=[];
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  await page.reload();
+  await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true});
+  const card=form.locator('xpath=../..');
+  await card.locator('summary').click();
+  await form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true}).fill('test-only-unsaved-token');
+  await card.getByRole('button',{name:'uygulama ayarlarını',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('test-only-unsaved-token');
+  await card.getByRole('button',{name:'Hesapla bağlan',exact:true}).click();
+  await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect(page.getByRole('form',{name:'X / Twitter Uygulama ayarları',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  await expect(modal).toBeHidden();
+  await card.locator('summary').click();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('');
+});
+
+test('OAuth navigation stays locked until both the start request and popup are closed',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  snapshot.connections=[];
+  snapshot.settings.oauth_apps=[{platform:'x',client_id:'test-client',redirect_uri:'http://127.0.0.1:5173/api/oauth/x/callback',mode:'web',has_secret:true}];
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  let release!:()=>void,requests=0;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/oauth/start',async route=>{requests++;if(requests===1)await held;return route.fulfill({json:{url:'about:blank'}})});
+  await page.reload();
+  await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  const card=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true}).locator('xpath=../..');
+  const firstPopup=page.waitForEvent('popup');
+  await card.getByRole('button',{name:'Hesapla bağlan',exact:true}).click();
+  const first=await firstPopup;
+  await expect.poll(()=>requests).toBe(1);
+  const navigation=page.getByRole('button',{name:'Hesabım',exact:true});
+  await expect(navigation).toBeDisabled();
+  await card.getByRole('button',{name:'Bağlantı penceresini kapat',exact:true}).click();
+  await expect.poll(()=>first.isClosed()).toBe(true);
+  await expect(navigation).toBeDisabled();release();
+  await expect(navigation).toBeEnabled();
+  const secondPopup=page.waitForEvent('popup');
+  await card.getByRole('button',{name:'Hesapla bağlan',exact:true}).click();
+  const second=await secondPopup;
+  await expect.poll(()=>requests).toBe(2);
+  await expect(card.getByRole('status')).toContainText('Hesap bağlantısı açılan pencerede bekleniyor.');
+  await expect(navigation).toBeDisabled();
+  await second.close();
+  await expect(navigation).toBeEnabled();
+  await navigation.click();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
+});
+
 test('unsaved platform settings require confirmation and survive background refresh',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/state')).json();
@@ -293,14 +353,22 @@ test('connection edits survive background updates and conflicting actions are lo
   await expect.poll(()=>requests).toBe(1);
   await expect(form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true})).toBeDisabled();
   await expect(card.getByRole('button',{name:'Yenile',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeDisabled();
   await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toBeDisabled();
   release();
   await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toBeEnabled();
   await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('test-only-token');
   await expect(form.getByLabel('Yenileme anahtarı',{exact:true})).toHaveValue('test-only-refresh');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Kaydedilmemiş değişiklikler');
+  await page.getByRole('alertdialog').getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
   await form.getByRole('button',{name:'Bilgileri kaydet',exact:true}).click();
   await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('');
   await expect(form.getByLabel('Yenileme anahtarı',{exact:true})).toHaveValue('');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
+  await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  await card.locator('summary').click();
   await form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();
