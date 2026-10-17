@@ -7,20 +7,23 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh} from './settingsSave';
-import {ConnectionDraft,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
+import {ConnectionDraft,connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
+import {useNavigationSafety} from './useNavigationSafety';
 
 export default function Connections({connections,settings,refresh,onSettings}:any){return <><div className="connection-banner"><ShieldCheck/><div><strong>{t('Bağlantıların kontrol altında.')}</strong><p>{t('Erişim ve yenileme anahtarları şifreli saklanır. Desteklenen hesaplar arka planda yenilenir.')}</p></div></div><div className="connection-grid">{platforms.map(p=><Connection key={p.id} p={p} saved={connections.find((c:any)=>c.platform===p.id)} app={settings.oauth_apps?.find((a:any)=>a.platform===p.id)} refresh={refresh} onSettings={onSettings}/>)}</div></>}
 
 function fields(saved:any):ConnectionDraft{return {account:saved?.account||'',label:saved?.label||'',expiry:dateInput(saved?.expires_at),refreshExpiry:dateInput(saved?.refresh_expires_at),long:saved?.token_kind==='long_lived'}}
 function Connection({p,saved,app,refresh,onSettings}:any){
-const [token,setToken]=useState(''),[refreshToken,setRefreshToken]=useState(''),[draft,setDraft]=useState(()=>fields(saved)),[busy,setBusy]=useState(false),[oauthOpen,setOAuthOpen]=useState(false),[removing,setRemoving]=useState(false),[error,setError]=useState('');
-const previous=useRef(fields(saved)),actions=useRef(new KeyedActions()),mounted=useRef(true),popup=useRef<Window|null>(null),popupOrigin=useRef(''),latestRefresh=useRef(refresh);
+const [token,setToken]=useState(''),[refreshToken,setRefreshToken]=useState(''),[draft,setDraft]=useState(()=>fields(saved)),[baseline,setBaseline]=useState(()=>fields(saved)),[busy,setBusy]=useState(false),[oauthOpen,setOAuthOpen]=useState(false),[removing,setRemoving]=useState(false),[error,setError]=useState('');
+const previous=useRef(fields(saved)),actions=useRef(new KeyedActions()),mounted=useRef(true),operationPending=useRef(false),popup=useRef<Window|null>(null),popupOrigin=useRef(''),latestRefresh=useRef(refresh);
+const reportPending=useNavigationSafety(undefined,false,connectionDraftChanged(draft,baseline,token,refreshToken));
 latestRefresh.current=refresh;
 const locked=busy||oauthOpen;
+function syncPending(){reportPending(operationPending.current||!!(popup.current&&!popup.current.closed))}
 function edit<K extends keyof ConnectionDraft>(key:K,value:ConnectionDraft[K]){setDraft(current=>({...current,[key]:value}))}
-function closePopup(){const current=popup.current;popup.current=null;try{current?.close()}catch{};if(mounted.current)setOAuthOpen(false)}
+function closePopup(){const current=popup.current;popup.current=null;try{current?.close()}catch{};if(mounted.current){setOAuthOpen(false);syncPending()}}
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;closePopup()}},[]);
-useEffect(()=>{const incoming=fields(saved),before=previous.current;previous.current=incoming;setDraft(current=>mergeConnectionDraft(current,before,incoming))},[saved?.id,saved?.expires_at,saved?.account,saved?.label,saved?.token_kind,saved?.refresh_expires_at]);
+useEffect(()=>{const incoming=fields(saved),before=previous.current;previous.current=incoming;setDraft(current=>mergeConnectionDraft(current,before,incoming));setBaseline(incoming)},[saved?.id,saved?.expires_at,saved?.account,saved?.label,saved?.token_kind,saved?.refresh_expires_at]);
 useEffect(()=>{
 const handle=(event:MessageEvent)=>{
 if(!isOAuthResult(event,popup.current,popupOrigin.current))return;
@@ -29,11 +32,11 @@ Promise.resolve().then(()=>latestRefresh.current()).catch(()=>{if(mounted.curren
 };
 window.addEventListener('message',handle);return()=>window.removeEventListener('message',handle);
 },[]);
-useEffect(()=>{if(!oauthOpen)return;const id=setInterval(()=>{if(!popup.current||popup.current.closed){popup.current=null;setOAuthOpen(false)}},500);return()=>clearInterval(id)},[oauthOpen]);
+useEffect(()=>{if(!oauthOpen)return;const id=setInterval(()=>{if(!popup.current||popup.current.closed){popup.current=null;setOAuthOpen(false);syncPending()}},500);return()=>clearInterval(id)},[oauthOpen]);
 
 async function guarded(operation:()=>Promise<void>){
 if(popup.current&&!popup.current.closed)return false;
-try{return await actions.current.run('connection',async()=>{setBusy(true);setError('');try{await operation()}finally{if(mounted.current)setBusy(false)}})}
+try{return await actions.current.run('connection',async()=>{operationPending.current=true;syncPending();setBusy(true);setError('');try{await operation()}finally{operationPending.current=false;if(mounted.current){setBusy(false);syncPending()}}})}
 catch(e:any){if(mounted.current){setError(e.message);toast.error(t(e.message))}return false}
 }
 function commit(write:()=>Promise<unknown>,message:string,done?:()=>void){return guarded(()=>saveThenRefresh({
@@ -42,23 +45,25 @@ saved:()=>{if(mounted.current){done?.();toast.success(t(message))}},
 refresh:async()=>{if(mounted.current)await latestRefresh.current()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak bağlantı durumu yenilenemedi. Listeyi tekrar yenile.'))},
 }))}
-function connect(){return guarded(async()=>{
+function connect(){
+// Resolve navigation before taking the operation lock, so the settings shortcut can be guarded too.
+if(!isApp&&!app){onSettings();toast.info(t('Önce bu platformun uygulama bilgilerini kaydet.'));return}
+return guarded(async()=>{
 if(isApp){await openExternal(serverUrl()+'/');if(mounted.current)toast.info(t('Hesap bağlama güvenlik nedeniyle tarayıcıda yapılır. Açılan sayfada giriş yapıp Bağlantılar ekranından devam et.'));return}
-if(!app){onSettings();toast.info(t('Önce bu platformun uygulama bilgilerini kaydet.'));return}
 // Keep each platform's window separate; capture the expected callback origin for this flow.
 popupOrigin.current=new URL(app.redirect_uri).origin;
 const current=window.open('about:blank','akis-connect-'+p.id,'width=600,height=760');
 if(!current)throw Error('Bağlantı penceresi engellendi. Açılır pencerelere izin ver.');
-popup.current=current;setOAuthOpen(true);
+popup.current=current;setOAuthOpen(true);syncPending();
 try{const result=await api('oauth/start',{platform:p.id,account:draft.account});if(mounted.current&&popup.current===current&&!current.closed)current.location.href=result.url}
 catch(error){if(popup.current===current)closePopup();throw error}
 })}
 function submit(event:any){
 event.preventDefault();
 const snapshot={...draft};
-return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshToken,account:snapshot.account,label:snapshot.label,expires_at:snapshot.expiry?Math.floor(new Date(snapshot.expiry).getTime()/1000):null,refresh_expires_at:snapshot.refreshExpiry?Math.floor(new Date(snapshot.refreshExpiry).getTime()/1000):null,token_kind:snapshot.long?'long_lived':'manual'}),'Bağlantı bilgileri kaydedildi.',()=>{previous.current=snapshot;setToken('');setRefreshToken('')});
+return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshToken,account:snapshot.account,label:snapshot.label,expires_at:snapshot.expiry?Math.floor(new Date(snapshot.expiry).getTime()/1000):null,refresh_expires_at:snapshot.refreshExpiry?Math.floor(new Date(snapshot.refreshExpiry).getTime()/1000):null,token_kind:snapshot.long?'long_lived':'manual'}),'Bağlantı bilgileri kaydedildi.',()=>{previous.current=snapshot;setBaseline(snapshot);setToken('');setRefreshToken('')});
 }
-function remove(){return commit(()=>api('connections',{platform:p.id},'DELETE'),'Bağlantı kaldırıldı.',()=>{const empty=fields(null);previous.current=empty;setDraft(empty);setToken('');setRefreshToken('');setRemoving(false)})}
+function remove(){return commit(()=>api('connections',{platform:p.id},'DELETE'),'Bağlantı kaldırıldı.',()=>{const empty=fields(null);previous.current=empty;setBaseline(empty);setDraft(empty);setToken('');setRefreshToken('');setRemoving(false)})}
 
 return <section className="panel connection" aria-busy={locked}>
 <div className="connection-heading"><span className="platform-icon large" style={{background:p.color}}>{p.symbol}</span><div><h2>{p.name}</h2><p>{saved?.label||t(p.hint)}</p></div><span className={'pill '+(saved?'saved':'')}>{t(saved?'Bağlı':'Bağlanmadı')}</span></div>

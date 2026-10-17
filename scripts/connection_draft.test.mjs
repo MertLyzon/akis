@@ -1,10 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {isOAuthResult,mergeConnectionDraft} from '../app/studio/connectionDraft.ts';
+import {connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from '../app/studio/connectionDraft.ts';
 
 const previous={account:'123',label:'Original',expiry:'2030-01-01T10:00',refreshExpiry:'2030-02-01T10:00',long:false};
 const incoming={account:'456',label:'Updated',expiry:'2030-01-02T10:00',refreshExpiry:'2030-02-02T10:00',long:true};
 const edits={account:'789',label:'My unsaved label',expiry:'2031-01-01T10:00',refreshExpiry:'2031-02-01T10:00',long:true};
+
+test('an untouched connection form does not need a navigation warning',()=>{
+  assert.equal(connectionDraftChanged({...previous},previous,'',''),false);
+});
+for(const field of Object.keys(edits))test(`unsaved connection ${field} warns until restored or saved`,()=>{
+  const draft={...previous,[field]:edits[field]};
+  assert.equal(connectionDraftChanged(draft,previous,'',''),true);
+  assert.equal(connectionDraftChanged(draft,draft,'',''),false);
+  assert.equal(connectionDraftChanged(previous,previous,'',''),false);
+});
+for(const [token,refreshToken] of [['test-only-token',''],['','test-only-refresh']])test(`a ${token?'token':'refresh-token'}-only edit warns without modifying metadata`,()=>{
+  const original={...previous};
+  assert.equal(connectionDraftChanged(previous,previous,token,refreshToken),true);
+  assert.deepEqual(previous,original);
+  assert.equal(connectionDraftChanged(previous,previous,'',''),false);
+});
+test('background-only connection updates remain clean while local edits still warn',()=>{
+  assert.equal(connectionDraftChanged(mergeConnectionDraft(previous,previous,incoming),incoming,'',''),false);
+  assert.equal(connectionDraftChanged(mergeConnectionDraft(edits,previous,incoming),incoming,'',''),true);
+});
+test('deliberately cleared connection metadata is unsaved until the save succeeds',()=>{
+  const cleared={...previous,account:'',label:'',expiry:'',refreshExpiry:''};
+  assert.equal(connectionDraftChanged(cleared,previous,'',''),true);
+  assert.equal(connectionDraftChanged(cleared,cleared,'',''),false);
+});
 
 test('unchanged fields follow background connection updates without mutating inputs',()=>{
   const original={...previous};

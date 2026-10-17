@@ -1,5 +1,10 @@
 export type ConnectionDraft={account:string;label:string;expiry:string;refreshExpiry:string;long:boolean};
 
+// Tokens are checked only for presence, never added to shared navigation state or storage.
+export function connectionDraftChanged(current:ConnectionDraft,saved:ConnectionDraft,token:string,refreshToken:string){
+  return !!token||!!refreshToken||current.account!==saved.account||current.label!==saved.label||current.expiry!==saved.expiry||current.refreshExpiry!==saved.refreshExpiry||current.long!==saved.long;
+}
+
 // A background token refresh may update saved metadata, but not the user's edits.
 export function mergeConnectionDraft(current:ConnectionDraft,previous:ConnectionDraft,incoming:ConnectionDraft):ConnectionDraft{
   return {
