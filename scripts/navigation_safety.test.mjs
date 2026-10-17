@@ -4,7 +4,7 @@ import {NavigationSafety} from '../app/studio/navigationSafety.ts';
 
 test('an idle screen can be left without confirmation',()=>{
   const guard=new NavigationSafety();assert.equal(guard.decision(),'allow');
-  assert.deepEqual(guard.snapshot(),{pending:false,sensitive:false});
+  assert.deepEqual(guard.snapshot(),{pending:false,sensitive:false,dirty:false});
 });
 test('regular tab navigation preserves the editor; replacing it requires confirmation',()=>{
   const guard=new NavigationSafety();
@@ -49,4 +49,18 @@ test('reports and returned snapshots are copied instead of being externally muta
 test('closing details does not remove the existing unsaved-editor warning',()=>{
   const guard=new NavigationSafety();guard.update('team',{pending:false,sensitive:true});
   guard.update('team',{pending:false,sensitive:false});assert.equal(guard.decision(true,true),'confirm');
+});
+test('unsaved forms warn on every route, even when the content editor is clean',()=>{
+  const guard=new NavigationSafety();guard.update('settings-x',{pending:false,sensitive:false,dirty:true});
+  assert.equal(guard.decision(),'confirm');
+  guard.update('settings-instagram',{pending:true,sensitive:false});assert.equal(guard.decision(),'blocked');
+  guard.update('settings-instagram',{pending:false,sensitive:false});assert.equal(guard.decision(),'confirm');
+  guard.update('settings-x',{pending:false,sensitive:false,dirty:false});assert.equal(guard.decision(),'allow');
+});
+test('saving one platform does not clear unsaved edits on another',()=>{
+  const guard=new NavigationSafety();
+  guard.update('settings-x',{pending:false,sensitive:false,dirty:true});
+  guard.update('settings-tiktok',{pending:false,sensitive:false,dirty:true});
+  guard.update('settings-x',{pending:false,sensitive:false,dirty:false});
+  assert.equal(guard.decision(),'confirm');assert.equal(guard.snapshot().dirty,true);
 });

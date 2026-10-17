@@ -1,5 +1,34 @@
 import {expect,test} from '@playwright/test';
 
+test('unsaved platform settings require confirmation and survive background refresh',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const app={platform:'x',client_id:'original-client',redirect_uri:'https://example.com/original',mode:'web',has_secret:true};
+  snapshot.settings.oauth_apps=[app];
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  await page.reload();
+  await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Uygulama ayarları',exact:true});
+  await form.getByLabel('Uygulama / Client ID',{exact:true}).fill('my-unsaved-client');
+  await form.getByLabel('Uygulama gizli anahtarı',{exact:true}).fill('test-only-secret');
+  app.client_id='external-client';app.redirect_uri='https://example.com/refreshed';
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect(form.getByLabel('Dönüş adresi',{exact:true})).toHaveValue(app.redirect_uri);
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toHaveValue('my-unsaved-client');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('test-only-secret');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await modal.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  await expect(modal).toBeHidden();
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('');
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toHaveValue('external-client');
+});
+
 test('critical navigation preserves a pending invitation and warns before discarding its link',async({page})=>{
   await page.goto('/');
   let release!:()=>void,requests=0;
@@ -302,14 +331,21 @@ test('platform settings lock repeated saves and preserve the secret after failur
   await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toBeDisabled();
   await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeDisabled();
   await expect(form.getByLabel('Dönüş adresi',{exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeDisabled();
   await expect(page.getByRole('form',{name:'Instagram Uygulama ayarları',exact:true}).getByRole('button',{name:'Ayarları kaydet',exact:true})).toBeEnabled();
   release();
   await expect(form.getByRole('alert')).toContainText('Settings temporarily unavailable');
   await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('test-only-secret');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Kaydedilmemiş değişiklikler');
+  await page.getByRole('alertdialog').getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
   await form.getByRole('button',{name:'Ayarları kaydet',exact:true}).click();
   await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('');
   await expect(form.getByRole('alert')).toHaveCount(0);
   await expect(form.locator('..')).toContainText('Tanımlı');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
   expect(requests).toBe(2);
 });
 

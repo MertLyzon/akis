@@ -2,7 +2,7 @@ export type Language='tr'|'en';
 
 const english:Record<string,string>={
   'İşlem tamamlanana kadar bu ekranda kal.':'Stay on this screen until the operation finishes.',
-  'Önce bu ekrandaki işlemi tamamla ve tek seferlik bilgileri kapat.':'Finish this screen’s operation and close its one-time details first.',
+  'Önce bu ekrandaki işlemi tamamla, değişikliklerini kaydet ve tek seferlik bilgileri kapat.':'Finish this screen’s operation, save your changes, and close its one-time details first.',
   'Tek seferlik bilgiler açık':'One-time details are open',
   'Bu ekranda tek sefer gösterilen bilgiler var. Ayrılırsan yeniden görüntülenemeyebilir. Güvenli şekilde aldığından emin misin?':'This screen contains details shown only once. They may not be available again after you leave. Have you saved them securely?',
   'Bu ekranda kal':'Stay on this screen',
