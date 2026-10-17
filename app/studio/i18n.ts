@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Medyayı sil':'Delete media',
+  'Bu işlem geri alınamaz.':'This action cannot be undone.',
   'Yüklemeyi durdur':'Stop uploading',
   'Yükleme durduruldu. Tamamlanan dosyalar kütüphanede kalır.':'Upload stopped. Completed files remain in the library.',
   'Kuyruktaki {count} dosya başlatılmadı.':'The remaining {count} queued files were not started.',
