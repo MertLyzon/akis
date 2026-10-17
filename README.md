@@ -116,6 +116,7 @@ Kütüphanede eşzamanlı işlem ve eski arama yanıtı korumaları `npm run tes
 Ekip işlemi kilidi ve panoya kopyalama sonuçları `npm run test:team` ile doğrulanır.
 Platform ayarı kaydı ve kayıt sonrası yenileme ayrımı `npm run test:settings` ile doğrulanır.
 Bağlantı formunun düzenlemeleri koruması ve OAuth mesaj doğrulaması `npm run test:connections` ile doğrulanır.
+Hesap işlem kilidi, 2FA kod biçimi ve kurulum yanıtı doğrulaması `npm run test:account` ile doğrulanır.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 

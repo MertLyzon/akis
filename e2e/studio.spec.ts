@@ -1,5 +1,71 @@
 import {expect,test} from '@playwright/test';
 
+test('account password changes preserve failed fields and session revocation requires confirmation',async({page})=>{
+  let passwords=0,revocations=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/me/password',async route=>{
+    passwords++;
+    if(passwords===1){await held;return route.fulfill({status:503,json:{error:'Password temporarily unavailable'}})}
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.route('**/api/me/sessions/revoke',route=>{revocations++;return route.fulfill({json:{ok:true}})});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  const form=page.getByRole('form',{name:'Parolayı değiştir',exact:true});
+  await form.getByLabel('Mevcut parola',{exact:true}).fill('test-current-password');
+  await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-new-password');
+  await form.getByLabel('Yeni parola tekrar',{exact:true}).fill('test-new-password');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>passwords).toBe(1);
+  await expect(form.getByLabel('Mevcut parola',{exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Diğer cihazlardan çıkış yap',exact:true})).toBeDisabled();
+  release();
+  await expect(form.getByRole('alert')).toContainText('Password temporarily unavailable');
+  await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('test-new-password');
+  await form.getByRole('button',{name:'Parolayı değiştir',exact:true}).click();
+  await expect(form.getByLabel('Mevcut parola',{exact:true})).toHaveValue('');
+  await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('');
+  await page.getByRole('button',{name:'Diğer cihazlardan çıkış yap',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();expect(revocations).toBe(0);
+  await page.getByRole('button',{name:'Diğer cihazlardan çıkış yap',exact:true}).click();
+  await modal.getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect(modal).toBeHidden();expect(revocations).toBe(1);expect(passwords).toBe(2);
+});
+
+test('two-factor setup cannot rotate twice and a failed enable preserves the setup',async({page})=>{
+  const secret='JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  let setups=0,enables=0;
+  let releaseSetup!:()=>void,releaseEnable!:()=>void;
+  const setupHeld=new Promise<void>(resolve=>{releaseSetup=resolve}),enableHeld=new Promise<void>(resolve=>{releaseEnable=resolve});
+  await page.route('**/api/me/2fa/setup',async route=>{setups++;await setupHeld;return route.fulfill({json:{secret,uri:`otpauth://totp/Akis:test@example.com?secret=${secret}&issuer=Akis&digits=6&period=30`}})});
+  await page.route('**/api/me/2fa/enable',async route=>{
+    enables++;expect(route.request().postDataJSON()).toEqual({code:'123456'});
+    if(enables===1){await enableHeld;return route.fulfill({status:503,json:{error:'Verification temporarily unavailable'}})}
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await page.getByRole('button',{name:'Kurulumu başlat',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>setups).toBe(1);releaseSetup();
+  const form=page.getByRole('form',{name:'Doğrula ve aç',exact:true});
+  await form.getByLabel('6 haneli kod',{exact:true}).fill('12345');
+  await form.evaluate(node=>node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  await expect(page.getByRole('alert').filter({hasText:'Doğrulama uygulamasındaki 6 haneli kodu gir.'})).toBeVisible();expect(enables).toBe(0);
+  await form.getByLabel('6 haneli kod',{exact:true}).fill('123-456');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>enables).toBe(1);
+  await expect(form.getByRole('button',{name:'Vazgeç',exact:true})).toBeDisabled();releaseEnable();
+  await expect(form.getByLabel('6 haneli kod',{exact:true})).toBeEnabled();
+  await expect(form.getByLabel('6 haneli kod',{exact:true})).toHaveValue('123-456');
+  await expect(page.locator('.totp-secret')).toBeVisible();
+  await form.getByRole('button',{name:'Doğrula ve aç',exact:true}).click();
+  await expect(page.getByRole('button',{name:'İki aşamalı girişi kapat',exact:true})).toBeVisible();
+  await expect(page.locator('.totp-secret')).toHaveCount(0);expect(setups).toBe(1);expect(enables).toBe(2);
+});
+
 test('connection edits survive background updates and conflicting actions are locked',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/state')).json();
