@@ -12,6 +12,7 @@
     "test:uploads": "node --experimental-strip-types --test scripts/upload_queue.test.mjs",
     "test:library": "node --experimental-strip-types --test scripts/library_requests.test.mjs",
     "test:team": "node --experimental-strip-types --test scripts/team_actions.test.mjs",
+    "test:settings": "node --experimental-strip-types --test scripts/settings_save.test.mjs",
     "test:e2e:install": "playwright install chromium",
     "start": "vite preview --host 127.0.0.1",
     "tauri": "tauri",
