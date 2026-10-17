@@ -1,37 +1,43 @@
-import {useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import {FileText,RefreshCw,Image as ImageIcon,Check,X,CalendarClock,Pencil,Trash2,History,Copy,Search,Loader2} from 'lucide-react';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {Textarea} from '@/components/ui/textarea';
 import {toast} from 'sonner';
 import {api,platforms,statuses,contentStatuses,outcomes,stages,inZone,mediaSrc} from './api';
 import {t} from './i18n';
+import {useNavigationSafety} from './useNavigationSafety';
+import {saveThenRefresh} from './settingsSave';
 
 const filters=[{id:'all',name:'Tümü'},{id:'pending_approval',name:'Onay bekleyen'},{id:'scheduled',name:'Planlı'},{id:'attention',name:'Sorunlu'},{id:'draft',name:'Taslak / reddedilen'}];
 function matches(p:any,f:string){if(f==='all')return true;if(f==='attention')return p.status==='attention'||p.deliveries.some((d:any)=>['failed','unknown'].includes(d.status));if(f==='draft')return ['draft','rejected'].includes(p.status);return p.status===f}
 
 export default function Posts({posts,loading,refresh,can,tz,onEdit,onDuplicate,initialFilter='all'}:any){
 const [filter,setFilter]=useState(initialFilter),[q,setQ]=useState('');
-const inFlight=useRef(new Set<string>());
+const inFlight=useRef(new Set<string>()),mounted=useRef(true);
+const reportPending=useNavigationSafety(undefined,false);
+useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
 const [active,setActive]=useState(new Set<string>()),[confirmation,setConfirmation]=useState<{post:any;kind:'reject'|'cancel'|'delete'}|null>(null),[note,setNote]=useState('');
+const [confirmationError,setConfirmationError]=useState(''),[confirmationStale,setConfirmationStale]=useState(false);
 const confirmationBusy=!!confirmation&&active.has(confirmation.post.id);
 const needle=q.trim().toLocaleLowerCase('tr');
 const shown=useMemo(()=>posts.filter((p:any)=>matches(p,filter)&&(!needle||[p.text,p.options?.template,p.created_by,p.asset?.filename].some(v=>v&&String(v).toLocaleLowerCase('tr').includes(needle)))),[posts,filter,needle]);
 const stats=useMemo(()=>[{label:'Toplam içerik',value:posts.length},{label:'Onay bekleyen',value:posts.filter((p:any)=>p.status==='pending_approval').length},{label:'Planlı',value:posts.filter((p:any)=>p.status==='scheduled').length},{label:'Kontrol gerekiyor',value:posts.filter((p:any)=>matches(p,'attention')).length}],[posts]);
 async function act(id:string,path:string,body:any,done:string,method?:string){
 if(inFlight.current.has(id))return false;
-inFlight.current.add(id);setActive(new Set(inFlight.current));
-try{await api(path,body,method);toast.success(done);await refresh();return true}
-catch(e:any){toast.error(t(e.message));if(e.status===409||e.status===404)await refresh();return false}
-finally{inFlight.current.delete(id);setActive(new Set(inFlight.current))}
+inFlight.current.add(id);reportPending(true);setActive(new Set(inFlight.current));
+const refreshFailed=()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))};
+try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)await refresh()},refreshFailed});return true}
+catch(e:any){if(mounted.current){toast.error(t(e.message));if(confirmation?.post.id===id){setConfirmationError(e.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
+finally{inFlight.current.delete(id);if(mounted.current){reportPending(inFlight.current.size>0);setActive(new Set(inFlight.current))}}
 }
-function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id))return;setNote('');setConfirmation({post,kind})}
+function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
 async function confirmAction(){
-if(!confirmation)return;
+if(!confirmation||confirmationStale)return;
 const {post,kind}=confirmation;
 if(kind==='reject'&&!note.trim())return;
 const done=kind==='reject'?'İçerik reddedildi, editöre not iletildi.':kind==='cancel'?'Plan iptal edildi, içerik taslağa döndü.':'İçerik silindi.';
-const ok=await act(post.id,`posts/${post.id}${kind==='delete'?'':'/'+kind}`,kind==='reject'?{note:note.trim(),expected_updated_at:post.updated_at}:{},t(done),kind==='delete'?'DELETE':undefined);
-if(ok)setConfirmation(null);
+const ok=await act(post.id,`posts/${post.id}${kind==='delete'?'':'/'+kind}`,{expected_updated_at:post.updated_at,...(kind==='reject'?{note:note.trim()}:{})},t(done),kind==='delete'?'DELETE':undefined);
+if(ok&&mounted.current)setConfirmation(null);
 }
 return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.label}><span>{t(s.label)}</span><strong>{s.value}</strong></div>)}</div>
 <section className="panel"><div className="panel-head"><div className="filter-tabs" role="tablist">{filters.map(f=><button key={f.id} role="tab" aria-selected={filter===f.id} className={filter===f.id?'active':''} onClick={()=>setFilter(f.id)}>{t(f.name)}</button>)}</div><label className="search-field"><Search size={15}/><input type="search" placeholder={t('İçeriklerde ara')} aria-label={t('İçeriklerde ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><button className="secondary" disabled={loading} onClick={refresh}><RefreshCw size={14}/>{t('Yenile')}</button></div>
@@ -51,10 +57,11 @@ return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.
 {onDuplicate&&<button className="secondary" title={t('Bu içeriğin kopyasıyla yeni taslak başlat')} disabled={active.has(p.id)} onClick={()=>onDuplicate(p)}><Copy size={14}/>{t('Kopyala')}</button>}
 {['draft','rejected'].includes(p.status)&&can('compose')&&<button className="text-button" disabled={active.has(p.id)} onClick={()=>ask(p,'delete')}><Trash2 size={14}/>{t('Sil')}</button>}
 </div></article>)}</section>
-<AlertDialog open={!!confirmation} onOpenChange={open=>{if(!open&&!confirmationBusy)setConfirmation(null)}}>
+<AlertDialog open={!!confirmation} onOpenChange={open=>{if(!open&&(!confirmation||!inFlight.current.has(confirmation.post.id)))setConfirmation(null)}}>
 <AlertDialogContent aria-busy={confirmationBusy}>
 <AlertDialogHeader><AlertDialogTitle>{t(confirmation?.kind==='delete'?'İçeriği sil':confirmation?.kind==='cancel'?'Planı iptal et':'İçeriği reddet')}</AlertDialogTitle><AlertDialogDescription>{t(confirmation?.kind==='delete'?'Bu içerik kalıcı olarak silinsin mi?':confirmation?.kind==='cancel'?'Plan iptal edilsin mi? İçerik taslağa döner.':'Reddetme nedeni (editör bu notu görecek):')}</AlertDialogDescription></AlertDialogHeader>
 <p className="field-help line-clamp-3 break-words">{confirmation?.post.text||confirmation?.post.options?.template||t('Medya paylaşımı')}</p>
 {confirmation?.kind==='reject'&&<label htmlFor="review-note">{t('Red nedeni')}<Textarea id="review-note" className="max-h-48" maxLength={1000} required value={note} disabled={confirmationBusy} onChange={event=>setNote(event.target.value)}/></label>}
-<AlertDialogFooter><AlertDialogCancel disabled={confirmationBusy}>{t('İptal et')}</AlertDialogCancel><AlertDialogAction disabled={confirmationBusy||(confirmation?.kind==='reject'&&!note.trim())} onClick={event=>{event.preventDefault();void confirmAction()}}>{confirmationBusy&&<Loader2 size={14} className="spin"/>}{t(confirmation?.kind==='delete'?'Sil':confirmation?.kind==='cancel'?'Planı iptal et':'Reddet')}</AlertDialogAction></AlertDialogFooter>
+{confirmationError&&<p className="error" role="alert">{t(confirmationError)}{confirmationStale&&' '+t('İçerik değişti veya kaldırıldı. Pencereyi kapatıp güncel liste üzerinden yeniden aç.')}</p>}
+<AlertDialogFooter><AlertDialogCancel disabled={confirmationBusy}>{t('İptal et')}</AlertDialogCancel><AlertDialogAction disabled={confirmationBusy||confirmationStale||(confirmation?.kind==='reject'&&!note.trim())} onClick={event=>{event.preventDefault();void confirmAction()}}>{confirmationBusy&&<Loader2 size={14} className="spin"/>}{t(confirmation?.kind==='delete'?'Sil':confirmation?.kind==='cancel'?'Planı iptal et':'Reddet')}</AlertDialogAction></AlertDialogFooter>
 </AlertDialogContent></AlertDialog></>}
