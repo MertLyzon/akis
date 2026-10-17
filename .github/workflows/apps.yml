@@ -58,6 +58,8 @@ jobs:
         run: npm run test:library
       - name: Team action and clipboard guards
         run: npm run test:team
+      - name: Settings save guards
+        run: npm run test:settings
       - name: Install browser smoke-test runtime
         run: npx playwright install --with-deps chromium
       - name: Browser smoke tests

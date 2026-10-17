@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Uygulama ayarları':'Application settings',
+  'Ayarlar kaydedildi ancak güncel durum alınamadı. Listeyi yenileyebilirsin.':'Settings were saved, but the latest status could not be loaded. You can refresh the list.',
   'Daveti iptal et':'Revoke invitation',
   'Kopyalanamadı. Metni seçip elle kopyalayabilirsin.':'Copy failed. You can select and copy the text manually.',
   'Medyayı sil':'Delete media',

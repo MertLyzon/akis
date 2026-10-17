@@ -1,5 +1,37 @@
 import {expect,test} from '@playwright/test';
 
+test('platform settings lock repeated saves and preserve the secret after failure',async({page})=>{
+  let requests=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/settings/oauth',async route=>{
+    requests++;
+    expect(route.request().postDataJSON()).toMatchObject({platform:'x',client_id:'test-client',client_secret:'test-only-secret'});
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Settings temporarily unavailable'}})}
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Uygulama ayarları',exact:true});
+  await form.getByLabel('Uygulama / Client ID',{exact:true}).fill('test-client');
+  await form.getByLabel('Uygulama gizli anahtarı',{exact:true}).fill('test-only-secret');
+  await form.getByLabel('Dönüş adresi',{exact:true}).fill('https://example.com/api/oauth/x/callback');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toBeDisabled();
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeDisabled();
+  await expect(form.getByLabel('Dönüş adresi',{exact:true})).toBeDisabled();
+  await expect(page.getByRole('form',{name:'Instagram Uygulama ayarları',exact:true}).getByRole('button',{name:'Ayarları kaydet',exact:true})).toBeEnabled();
+  release();
+  await expect(form.getByRole('alert')).toContainText('Settings temporarily unavailable');
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('test-only-secret');
+  await form.getByRole('button',{name:'Ayarları kaydet',exact:true}).click();
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('');
+  await expect(form.getByRole('alert')).toHaveCount(0);
+  await expect(form.locator('..')).toContainText('Tanımlı');
+  expect(requests).toBe(2);
+});
+
 test('team invitation locks repeated submits and preserves fields after failure',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/company')).json();
