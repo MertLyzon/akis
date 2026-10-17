@@ -113,6 +113,7 @@ süre, çözünürlük, thread ve zaman aşımı sınırları `.env` ile ayarlan
 sınırlıdır. `COMPANY_STORAGE_MB` bu sınırı değiştirir; `0` sınırsız kullanım içindir.
 
 Kütüphanede eşzamanlı işlem ve eski arama yanıtı korumaları `npm run test:library` ile doğrulanır.
+Ekip işlemi kilidi ve panoya kopyalama sonuçları `npm run test:team` ile doğrulanır.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 

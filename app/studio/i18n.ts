@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Daveti iptal et':'Revoke invitation',
+  'Kopyalanamadı. Metni seçip elle kopyalayabilirsin.':'Copy failed. You can select and copy the text manually.',
   'Medyayı sil':'Delete media',
   'Bu işlem geri alınamaz.':'This action cannot be undone.',
   'Yüklemeyi durdur':'Stop uploading',
