@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İki aşamalı giriş kurulum bilgileri alınamadı. Tekrar dene.':'Two-factor setup details could not be loaded. Try again.',
+  'Doğrulama uygulamasındaki 6 haneli kodu gir.':'Enter the six-digit code from your authenticator app.',
+  'İşlem tamamlandı ancak hesap durumu yenilenemedi. Sayfayı tekrar yenile.':'The operation completed, but account status could not be refreshed. Refresh the page again.',
   'Bağlantı bilgileri':'Connection details',
   'Hesap bağlantısı açılan pencerede bekleniyor.':'Waiting for account connection in the opened window.',
   'Bağlantı penceresini kapat':'Close connection window',
