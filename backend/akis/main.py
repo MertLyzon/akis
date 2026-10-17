@@ -760,9 +760,11 @@ def edit_content(identifier:str,data:ContentEditInput,background:BackgroundTasks
     after_commit(background,identifier,outcome)
     return {'id':identifier,'outcome':outcome}
 
-class ReviewInput(BaseModel):
-    note:str=Field(default='',max_length=1000)
+class ContentVersionInput(BaseModel):
     expected_updated_at:int|None=Field(default=None,ge=0)
+
+class ReviewInput(ContentVersionInput):
+    note:str=Field(default='',max_length=1000)
 
 @app.post('/api/posts/{identifier}/approve')
 def approve_content(identifier:str,data:ReviewInput,background:BackgroundTasks,actor=Depends(require('approve'))):
@@ -789,9 +791,10 @@ def reject_content(identifier:str,data:ReviewInput,actor=Depends(require('approv
     return {'ok':True}
 
 @app.post('/api/posts/{identifier}/cancel')
-def cancel_schedule(identifier:str,actor=Depends(require('approve'))):
+def cancel_schedule(identifier:str,data:ContentVersionInput|None=None,actor=Depends(require('approve'))):
     with Session() as db:
         p=company_content(db,identifier,actor)
+        claim_content_version(db,p,data.expected_updated_at if data else None)
         rows=list(db.scalars(select(ContentPlatform).where(ContentPlatform.content_id==p.id)))
         if p.status!='scheduled' or any(r.status!='pending' or r.retry_count or r.progress for r in rows): raise HTTPException(400,'Gönderim başladığı için plan iptal edilemez.')
         # Conditional delete: a worker that claimed a row after the read above (pending → sending) keeps it,
@@ -799,14 +802,15 @@ def cancel_schedule(identifier:str,actor=Depends(require('approve'))):
         removed=db.execute(delete(ContentPlatform).where(ContentPlatform.content_id==p.id,ContentPlatform.status=='pending',ContentPlatform.retry_count==0)).rowcount
         if removed!=len(rows): db.rollback();raise HTTPException(400,'Gönderim başladığı için plan iptal edilemez.')
         db.execute(delete(Broadcast).where(Broadcast.content_id==p.id))
-        p.status='draft';p.approved_by=None;p.approved_at=None;p.updated_at=max(now(),p.updated_at+1)
+        p.status='draft';p.approved_by=None;p.approved_at=None
         audit(db,actor,'content.schedule_cancelled','content',identifier);db.commit()
     return {'ok':True}
 
 @app.delete('/api/posts/{identifier}')
-def delete_content(identifier:str,actor=Depends(require('compose'))):
+def delete_content(identifier:str,data:ContentVersionInput|None=None,actor=Depends(require('compose'))):
     with Session() as db:
         p=company_content(db,identifier,actor)
+        claim_content_version(db,p,data.expected_updated_at if data else None)
         if p.status not in ('draft','rejected'): raise HTTPException(400,'Yalnızca taslak veya reddedilen içerikler silinebilir.')
         db.execute(update(MediaAsset).where(MediaAsset.content_id==p.id).values(content_id=None))
         db.delete(p);audit(db,actor,'content.deleted','content',identifier);db.commit()

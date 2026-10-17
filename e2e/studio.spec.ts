@@ -1,5 +1,74 @@
 import {expect,test} from '@playwright/test';
 
+for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled','Planı iptal et']])test(`a stale ${kind} confirmation must be reopened against the refreshed version`,async({page})=>{
+  await page.goto('/');
+  const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Original ${kind} confirmation`,platforms:['x']}});
+  const identifier=(await created.json()).id;
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const post=snapshot.posts.find((p:any)=>p.id===identifier);
+  post.status=status;
+  const originalVersion=post.updated_at;
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  let requests=0;
+  await page.route(`**/api/posts/${identifier}${kind==='delete'?'':'/cancel'}`,route=>{
+    requests++;
+    expect(route.request().postDataJSON().expected_updated_at).toBe(requests===1?originalVersion:post.updated_at);
+    if(requests===1){post.text=`Updated ${kind} confirmation`;post.updated_at++;return route.fulfill({status:409,json:{error:'Content changed during confirmation'}})}
+    if(kind==='delete')snapshot.posts=snapshot.posts.filter((p:any)=>p.id!==identifier);else post.status='draft';
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  const row=page.locator('article').filter({hasText:`Original ${kind} confirmation`});
+  await row.getByRole('button',{name:label,exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await modal.getByRole('button',{name:label,exact:true}).click();
+  await expect(modal.getByRole('alert')).toContainText('Pencereyi kapatıp güncel liste üzerinden yeniden aç.');
+  await expect(modal.getByRole('button',{name:label,exact:true})).toBeDisabled();
+  await modal.getByRole('button',{name:label,exact:true}).evaluate(button=>(button as HTMLButtonElement).click());
+  expect(requests).toBe(1);
+  await modal.getByRole('button',{name:'İptal et',exact:true}).click();
+  const updated=page.locator('article').filter({hasText:`Updated ${kind} confirmation`});
+  await updated.getByRole('button',{name:label,exact:true}).click();
+  await expect(modal).toContainText(`Updated ${kind} confirmation`);
+  await modal.getByRole('button',{name:label,exact:true}).click();
+  await expect(modal).toBeHidden();expect(requests).toBe(2);
+});
+
+test('independent post approvals can overlap but navigation stays locked until both finish',async({page})=>{
+  await page.goto('/');
+  const ids=[];
+  for(const name of ['A','B']){
+    const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Overlapping approval ${name}`,platforms:['x']}});
+    ids.push((await created.json()).id);
+  }
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const posts=ids.map(id=>snapshot.posts.find((p:any)=>p.id===id));
+  posts.forEach(post=>{post.status='pending_approval'});
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  const releases:Array<()=>void>=[],requests=[0,0];
+  for(let index=0;index<2;index++){
+    const held=new Promise<void>(resolve=>{releases[index]=resolve});
+    await page.route(`**/api/posts/${ids[index]}/approve`,async route=>{requests[index]++;await held;posts[index].status='processing';return route.fulfill({json:{ok:true}})});
+  }
+  await page.reload();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  const rows=posts.map(post=>page.locator('article').filter({hasText:post.text}));
+  await rows[0].getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>requests[0]).toBe(1);
+  const navigation=page.getByRole('button',{name:'Hesabım',exact:true});
+  await expect(navigation).toBeDisabled();
+  await rows[1].getByRole('button',{name:'Onayla',exact:true}).click();
+  await expect.poll(()=>requests[1]).toBe(1);
+  releases[0]();
+  await expect(rows[0]).toHaveAttribute('aria-busy','false');
+  await expect(navigation).toBeDisabled();
+  releases[1]();
+  await expect(navigation).toBeEnabled();expect(requests).toEqual([1,1]);
+});
+
 for(const [date,message] of [
   ['2027-03-28','Bu saat, şirketin saat dilimindeki saat değişimi nedeniyle mevcut değil. Başka bir saat seç.'],
   ['2027-10-31','Bu saat, şirketin saat dilimindeki saat değişiminde iki kez yaşanıyor. Başka bir saat seç.'],

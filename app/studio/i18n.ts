@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İçerik değişti veya kaldırıldı. Pencereyi kapatıp güncel liste üzerinden yeniden aç.':'This content changed or was removed. Close this dialog and reopen it from the refreshed list.',
+  'İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.':'The operation completed, but the post list could not be refreshed. Refresh the list again.',
+  'Gönderi listesi yenilenemedi. Listeyi tekrar yenile.':'The post list could not be refreshed. Refresh the list again.',
   'Bu saat, şirketin saat dilimindeki saat değişimi nedeniyle mevcut değil. Başka bir saat seç.':'This time does not exist because of a clock change in the company’s time zone. Choose another time.',
   'Bu saat, şirketin saat dilimindeki saat değişiminde iki kez yaşanıyor. Başka bir saat seç.':'This time occurs twice because of a clock change in the company’s time zone. Choose another time.',
   'Şirketin saat dilimi geçersiz. Şirket ayarlarını kontrol et.':'The company’s time zone is invalid. Check company settings.',

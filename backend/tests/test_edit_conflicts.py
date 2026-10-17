@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime,timedelta,timezone
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
@@ -159,4 +160,74 @@ def test_failed_review_validation_does_not_advance_version(client):
     assert client.post(f"/api/posts/{original['id']}/reject",json={'note':'   ','expected_updated_at':original['updated_at']}).status_code==400
     assert client.post(f"/api/posts/{original['id']}/approve",json={'expected_updated_at':original['updated_at']}).status_code==400
     assert snapshot(client,original['id'])['updated_at']==original['updated_at']
+
+
+def test_stale_delete_preserves_a_newer_draft_and_has_no_delete_audit(client):
+    original=draft(client)
+    assert edit(client,original,'Newer draft').status_code==200
+    response=client.request('DELETE',f"/api/posts/{original['id']}",json={'expected_updated_at':original['updated_at']})
+    assert response.status_code==409
+    current=snapshot(client,original['id'])
+    assert current['text']=='Newer draft'
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.target_id==original['id'],AuditLog.action=='content.deleted'))==0
+    assert client.request('DELETE',f"/api/posts/{original['id']}",json={'expected_updated_at':current['updated_at']}).status_code==200
+    with Session() as db:
+        assert db.get(Content,original['id']) is None
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.target_id==original['id'],AuditLog.action=='content.deleted'))==1
+
+
+def scheduled(client):
+    assert client.patch('/api/company',json={'timezone':'UTC'}).status_code==200
+    assert client.post('/api/connections',json={'platform':'x','token':'fake'}).status_code==200
+    when=(datetime.now(timezone.utc)+timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
+    identifier=client.post('/api/posts',json={'requestId':str(uuid.uuid4()),'text':'Original plan','platforms':['x'],'send':True,'scheduled_local':when}).json()['id']
+    return snapshot(client,identifier),when
+
+
+def test_stale_cancel_cannot_cancel_a_new_plan_created_since_confirmation(client):
+    original,when=scheduled(client)
+    url=f"/api/posts/{original['id']}/cancel"
+    assert client.post(url,json={'expected_updated_at':original['updated_at']}).status_code==200
+    cancelled=snapshot(client,original['id'])
+    assert cancelled['updated_at']>original['updated_at']
+    assert edit(client,cancelled,'Replacement plan',send=True,scheduled_local=when).status_code==200
+    current=snapshot(client,original['id'])
+    assert client.post(url,json={'expected_updated_at':original['updated_at']}).status_code==409
+    assert snapshot(client,original['id'])==current
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(ContentPlatform).where(ContentPlatform.content_id==original['id']))==1
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.target_id==original['id'],AuditLog.action=='content.schedule_cancelled'))==1
+    assert client.post(url,json={'expected_updated_at':current['updated_at']}).status_code==200
+    assert snapshot(client,original['id'])['status']=='draft'
+
+
+def test_simultaneous_cancellations_have_only_one_winner(client):
+    original,_=scheduled(client)
+    barrier=Barrier(2)
+    def cancel(_):
+        barrier.wait(timeout=10)
+        return client.post(f"/api/posts/{original['id']}/cancel",json={'expected_updated_at':original['updated_at']}).status_code
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        codes=list(pool.map(cancel,range(2)))
+    assert sorted(codes)==[200,409]
+    with Session() as db:
+        assert db.scalar(select(func.count()).select_from(ContentPlatform))==0
+        assert db.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.target_id==original['id'],AuditLog.action=='content.schedule_cancelled'))==1
+
+
+def test_invalid_cancel_or_delete_status_does_not_consume_the_opened_version(client):
+    original=draft(client)
+    assert client.post(f"/api/posts/{original['id']}/cancel",json={'expected_updated_at':original['updated_at']}).status_code==400
+    assert snapshot(client,original['id'])['updated_at']==original['updated_at']
+    planned,_=scheduled(client)
+    assert client.request('DELETE',f"/api/posts/{planned['id']}",json={'expected_updated_at':planned['updated_at']}).status_code==400
+    assert snapshot(client,planned['id'])['updated_at']==planned['updated_at']
+
+
+def test_older_clients_can_cancel_and_delete_without_a_request_body(client):
+    original,_=scheduled(client)
+    assert client.post(f"/api/posts/{original['id']}/cancel").status_code==200
+    assert edit(client,original,'Stale editor').status_code==409
+    assert client.delete(f"/api/posts/{original['id']}").status_code==200
 
