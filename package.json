@@ -17,6 +17,7 @@
     "test:account": "node --experimental-strip-types --test scripts/account_security.test.mjs",
     "test:auth": "node --experimental-strip-types --test scripts/auth_flow.test.mjs",
     "test:system": "node --experimental-strip-types --test scripts/system_policy.test.mjs",
+    "test:navigation": "node --experimental-strip-types --test scripts/navigation_safety.test.mjs",
     "test:e2e:install": "playwright install chromium",
     "start": "vite preview --host 127.0.0.1",
     "tauri": "tauri",

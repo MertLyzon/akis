@@ -1,5 +1,57 @@
 import {expect,test} from '@playwright/test';
 
+test('critical navigation preserves a pending invitation and warns before discarding its link',async({page})=>{
+  await page.goto('/');
+  let release!:()=>void,requests=0;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/company/members',async route=>{
+    requests++;await held;
+    return route.fulfill({json:{email:'navigation-test@example.com',invite_path:'/join?token=navigation-test-only',expires_at:Math.floor(Date.now()/1000)+3600}});
+  });
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const form=page.locator('form.member-add');
+  await form.getByPlaceholder('E-posta',{exact:true}).fill('navigation-test@example.com');
+  await form.getByRole('button',{name:'Davet et',exact:true}).click();
+  await expect.poll(()=>requests).toBe(1);
+  await expect(page.getByRole('button',{name:'Sistem yönetimi',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Çıkış yap',exact:true})).toBeDisabled();
+  release();
+  await expect(page.locator('.secret-card code')).toContainText('navigation-test-only');
+  const target=page.getByRole('button',{name:'Sistem yönetimi',exact:true});
+  await expect(target).toBeEnabled();
+  expect(await page.evaluate(()=>{const event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);return event.defaultPrevented})).toBe(true);
+  await target.click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Tek seferlik bilgiler açık');
+  await modal.getByRole('button',{name:'Bu ekranda kal',exact:true}).click();
+  await expect(page.locator('.secret-card code')).toContainText('navigation-test-only');
+  await target.click();
+  await modal.getByRole('button',{name:'Bilgileri kapat ve devam et',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket oluştur',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  await expect(modal).toBeHidden();
+  await expect(page.locator('.secret-card')).toHaveCount(0);
+});
+
+test('cancelling two-factor setup clears the sensitive navigation warning',async({page})=>{
+  const secret='JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+  await page.route('**/api/me/2fa/setup',route=>route.fulfill({json:{secret,uri:`otpauth://totp/Akis:test@example.com?secret=${secret}&issuer=Akis&digits=6&period=30`}}));
+  await page.goto('/');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await page.getByRole('button',{name:'Kurulumu başlat',exact:true}).click();
+  const form=page.getByRole('form',{name:'Doğrula ve aç',exact:true});
+  await expect(form).toBeVisible();
+  await page.getByRole('button',{name:'Sistem yönetimi',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Tek seferlik bilgiler açık');
+  await modal.getByRole('button',{name:'Bu ekranda kal',exact:true}).click();
+  await expect(page.locator('.totp-secret')).toBeVisible();
+  await form.getByRole('button',{name:'Vazgeç',exact:true}).click();
+  await page.getByRole('button',{name:'Sistem yönetimi',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket oluştur',exact:true})).toBeVisible();
+  await expect(modal).toBeHidden();
+});
+
 test('system administration preserves failed forms and never starts backups automatically',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/system/overview')).json();

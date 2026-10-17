@@ -6,6 +6,7 @@ import {api,roleNames,bytes,inZone,platforms,isApp,serverUrl} from './api';
 import {locale,t} from './i18n';
 import {KeyedActions,LatestRequest} from './libraryRequests';
 import {copyToClipboard} from './clipboard';
+import {useNavigationSafety} from './useNavigationSafety';
 
 async function copySecret(value:string){try{await copyToClipboard(value);toast.success(t('Kopyalandı.'))}catch{toast.error(t('Kopyalanamadı. Metni seçip elle kopyalayabilirsin.'))}}
 
@@ -16,11 +17,12 @@ function InviteLink({email,url,expires,onClose}:any){return <div className="secr
 
 function Secret({email,password,onClose}:any){return <div className="secret-card" role="alert"><KeyRound size={18}/><div><strong>{email} · {t('Geçici parola')}</strong><p>{t('Bu parola yalnızca şimdi gösterilir. Kişiye güvenli bir kanaldan ilet; ilk girişte değiştirmesi istenir.')}</p><code>{password}</code></div><button className="secondary" onClick={()=>copySecret(password)}><Copy size={14}/>{t('Kopyala')}</button><button className="text-button" onClick={onClose}>{t('Kapat')}</button></div>}
 
-export default function Team({tz,can,me,refreshState}:any){
+export default function Team({tz,can,me,refreshState,onNavigationState}:any){
 const actions=useRef(new KeyedActions()),companyRequest=useRef(new LatestRequest()),auditRequest=useRef(new LatestRequest()),mounted=useRef(true),auditPending=useRef(false);
 const [busy,setBusy]=useState(false),[auditBusy,setAuditBusy]=useState(false),[loadError,setLoadError]=useState(''),[confirmation,setConfirmation]=useState<{kind:'revoke'|'reset'|'remove';person:any}|null>(null);
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;companyRequest.current.invalidate();auditRequest.current.invalidate()}},[]);
 const [link,setLink]=useState<any>(null),[data,setData]=useState<any>(null),[audit,setAudit]=useState<any[]>([]),[more,setMore]=useState(true),[secret,setSecret]=useState<any>(null),[email,setEmail]=useState(''),[name,setName]=useState(''),[role,setRole]=useState('editor');
+const reportPending=useNavigationSafety(onNavigationState,!!secret||!!link);
 const load=useCallback(()=>companyRequest.current.run(()=>api('company'),r=>{setData(r);setLoadError('')},(e:any)=>setLoadError(e.message),()=>{}),[]);
 const loadAudit=useCallback((before=0,beforeId='')=>{
 if(before&&auditPending.current)return Promise.resolve();
@@ -30,9 +32,9 @@ return auditRequest.current.run(()=>api('audit?'+new URLSearchParams({before:Str
 useEffect(()=>{load();loadAudit()},[load,loadAudit]);
 async function call(path:string,body:any,method:string|undefined,msg:string,onSuccess?:(result:any)=>void){
 try{return await actions.current.run('team',async()=>{
-setBusy(true);
+reportPending(true);setBusy(true);
 try{const result=await api(path,body,method);if(mounted.current){onSuccess?.(result);setConfirmation(null);toast.success(msg);await Promise.allSettled([load(),loadAudit(),Promise.resolve().then(()=>refreshState())])}}
-finally{if(mounted.current)setBusy(false)}
+finally{if(mounted.current){reportPending(false);setBusy(false)}}
 })}catch(e:any){if(mounted.current)toast.error(t(e.message));return false}
 }
 function ask(kind:'revoke'|'reset'|'remove',person:any){if(!actions.current.has('team'))setConfirmation({kind,person})}

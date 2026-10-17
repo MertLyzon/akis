@@ -8,15 +8,17 @@ import {KeyedActions,LatestRequest} from './libraryRequests';
 import {copyToClipboard} from './clipboard';
 import {saveThenRefresh} from './settingsSave';
 import {systemBackupPolicy} from './systemPolicy';
+import {useNavigationSafety} from './useNavigationSafety';
 
 function Health({label,value,detail}:any){const Icon=value===true?CheckCircle2:value===false?XCircle:MinusCircle;return <div className={'health '+(value===true?'ok':value===false?'bad':'off')}><Icon size={18}/><div><strong>{label}</strong><small>{detail}</small></div></div>}
 const date=(value:number)=>value?new Date(value*1000).toLocaleString(locale()):'';
 const heartbeat=(value:number|null,checked:number)=>value?t('{seconds} saniye önce sinyal verdi',{seconds:Math.max(0,checked-value)}):t('Henüz sinyal alınmadı');
 const latency=(value:any)=>typeof value==='number'?` · ${value.toLocaleString(locale(),{maximumFractionDigits:1})} ms`:'';
 
-export default function System({settings,refreshState}:any){
+export default function System({settings,refreshState,onNavigationState}:any){
 const [data,setData]=useState<any>(null),[active,setActive]=useState(''),[secret,setSecret]=useState<any>(null),[publicUrl,setPublicUrl]=useState(settings.public_base_url||''),[loadError,setLoadError]=useState(''),[actionError,setActionError]=useState(''),[reading,setReading]=useState(false),[confirmation,setConfirmation]=useState<any>(null);
 const busy=!!active,actions=useRef(new KeyedActions()),overview=useRef(new LatestRequest()),inFlight=useRef<Promise<void>|null>(null),mounted=useRef(true),latestRefresh=useRef(refreshState);
+const reportPending=useNavigationSafety(onNavigationState,!!secret);
 latestRefresh.current=refreshState;
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;overview.current.invalidate();inFlight.current=null}},[]);
 const load=useCallback((force=false)=>{
@@ -29,9 +31,9 @@ inFlight.current=request;void request.finally(()=>{if(inFlight.current===request
 useEffect(()=>{load();const id=setInterval(()=>{if(!document.hidden)load()},10000);return()=>clearInterval(id)},[load]);
 async function act(kind:string,write:()=>Promise<any>,done:(result:any)=>void,refreshSession=false){
 try{return await actions.current.run('system',async()=>{
-setActive(kind);setActionError('');let result:any;
+reportPending(true);setActive(kind);setActionError('');let result:any;
 try{await saveThenRefresh({save:async()=>{result=await write()},saved:()=>{if(mounted.current)done(result)},refresh:async()=>{if(mounted.current){await load(true);if(refreshSession&&mounted.current)await latestRefresh.current()}},refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak sistem durumu yenilenemedi. Listeyi tekrar yenile.'))}})}
-finally{if(mounted.current)setActive('')}
+finally{if(mounted.current){reportPending(false);setActive('')}}
 })}catch(error:any){if(mounted.current){setActionError(kind==='company'&&(!error.status||error.status>=500)?t(error.message)+' '+t('İstek sunucuda tamamlanmış olabilir. Yeniden oluşturmadan önce şirket listesini yenile.'):error.message);toast.error(t(error.message))}return false}
 }
 function toggleCompany(){if(!confirmation)return;const company=confirmation;return act('toggle',()=>api(`system/companies/${company.id}`,{disabled:!company.disabled},'PATCH'),()=>{setData((value:any)=>({...value,companies:value.companies.map((item:any)=>item.id===company.id?{...item,disabled:!company.disabled}:item)}));setConfirmation(null);toast.success(t('Şirket durumu güncellendi.'))})}
