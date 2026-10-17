@@ -16,6 +16,7 @@ import {Language,readLanguage,saveLanguage,t} from './studio/i18n';
 import LanguageQuick from './studio/LanguageQuick';
 import CommandMenu from './studio/CommandMenu';
 import {NavigationSafety,NavigationStatus} from './studio/navigationSafety';
+import {NavigationContext} from './studio/useNavigationSafety';
 const Posts=lazy(()=>import('./studio/Posts'));
 const Calendar=lazy(()=>import('./studio/Calendar'));
 const Library=lazy(()=>import('./studio/Library'));
@@ -56,10 +57,10 @@ const refreshInFlight=useRef(false);
 const refreshQueued=useRef(false),refreshContext=useRef(0);
 const [invite,setInvite]=useState(inviteToken);
 useEffect(()=>{
-if(!hasUnsavedChanges&&!busy&&!uploading&&!navigationStatus.pending&&!navigationStatus.sensitive)return;
+if(!hasUnsavedChanges&&!busy&&!uploading&&!navigationStatus.pending&&!navigationStatus.sensitive&&!navigationStatus.dirty)return;
 const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=''};
 window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
-},[hasUnsavedChanges,busy,uploading,navigationStatus.pending,navigationStatus.sensitive]);
+},[hasUnsavedChanges,busy,uploading,navigationStatus.pending,navigationStatus.sensitive,navigationStatus.dirty]);
 useEffect(()=>{const on=()=>setInvite(inviteToken());window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on)},[]);
 const refresh=useCallback(async()=>{if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
 const loadSession=useCallback(async()=>{forgetState();if(isApp&&!serverUrl()){setSession({authenticated:false});setLoading(false);return}try{const s=await api('session');const companies=s.user?.companies||[];const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();const active=companies.find((c:any)=>c.id===saved)||companies[0];if(active)setCompany(active.id);setSession(s);if(s.authenticated&&active)await refresh();else setLoading(false);if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system')}catch(e:any){setError(e.message);setLoading(false)}},[refresh]);
@@ -68,7 +69,7 @@ useEffect(()=>{const connected=()=>{setOnline(true);if(session?.authenticated)re
 const pollInterval=statePollInterval(state);
 useEffect(()=>{if(!session?.authenticated)return;const id=setInterval(()=>{if(!document.hidden&&navigator.onLine)refresh()},pollInterval);return()=>clearInterval(id)},[session?.authenticated,refresh,pollInterval]);
 useEffect(()=>{function shortcut(event:KeyboardEvent){if(session?.authenticated&&(event.metaKey||event.ctrlKey)&&event.key.toLocaleLowerCase()==='k'){event.preventDefault();if(!busy&&!uploading&&!navigation.current.snapshot().pending)setCommandOpen(value=>!value)}}window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut)},[session?.authenticated,busy,uploading]);
-useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();try{Promise.resolve(context.registerTool({name:'stage_content',description:'Prepare text in the content editor without saving or publishing.',inputSchema:{type:'object',properties:{text:{type:'string',maxLength:5000}},required:['text'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:any){const guard=navigation.current.snapshot();if(saveInFlight.current||guard.pending||guard.sensitive)throw Error(t('Önce bu ekrandaki işlemi tamamla ve tek seferlik bilgileri kapat.'));if(typeof input?.text!=='string'||input.text.length>5000)throw Error(t('Geçersiz metin'));setText(input.text);setView('compose');return {staged:true,published:false}}},{signal:life.signal})).catch(()=>{})}catch{}return()=>life.abort()},[]);
+useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();try{Promise.resolve(context.registerTool({name:'stage_content',description:'Prepare text in the content editor without saving or publishing.',inputSchema:{type:'object',properties:{text:{type:'string',maxLength:5000}},required:['text'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:any){const guard=navigation.current.snapshot();if(saveInFlight.current||guard.pending||guard.sensitive||guard.dirty)throw Error(t('Önce bu ekrandaki işlemi tamamla, değişikliklerini kaydet ve tek seferlik bilgileri kapat.'));if(typeof input?.text!=='string'||input.text.length>5000)throw Error(t('Geçersiz metin'));setText(input.text);setView('compose');return {staged:true,published:false}}},{signal:life.signal})).catch(()=>{})}catch{}return()=>life.abort()},[]);
 // One unsent draft per person and company; removed on sign-out so a shared computer does not show it to the next user.
 const draftKey=state.company?.id&&session?.user?.id?`akis-draft:${session.user.id}:${state.company.id}`:'';
 // Restore before writing, and flush each edit before another browser interaction can navigate away.
@@ -87,7 +88,7 @@ const direct=can('approve')||state.company?.require_approval===false;
 function requestNavigation(action:()=>void,discardEditor=false){
 const decision=navigation.current.decision(discardEditor,hasUnsavedChanges);
 if(saveInFlight.current||uploading||decision==='blocked'){toast.info(t('İşlem tamamlanana kadar bu ekranda kal.'));return false}
-if(decision==='confirm'){setPendingEditorAction({action,editor:discardEditor&&hasUnsavedChanges,sensitive:navigation.current.snapshot().sensitive});return false}
+if(decision==='confirm'){setPendingEditorAction({action,editor:(discardEditor&&hasUnsavedChanges)||!!navigation.current.snapshot().dirty,sensitive:navigation.current.snapshot().sensitive});return false}
 action();return true;
 }
 function replaceEditor(action:()=>void){requestNavigation(action,true)}
@@ -151,7 +152,7 @@ function changeHourFormat(value:HourFormat){saveHourFormat(value);setHourFormat(
 function changeLanguage(value:Language){saveLanguage(value);setUiLanguage(value)}
 const hour24=Number(scheduleHour),hour12=String((hour24+11)%12+1).padStart(2,'0'),period=hour24>=12?'PM':'AM';
 function setTwelveHour(value:string,nextPeriod=period){const h=Number(value)%12+(nextPeriod==='PM'?12:0);setSchedulePart('hour',String(h).padStart(2,'0'))}
-return <SidebarProvider><Sidebar className="app-sidebar"><SidebarHeader><a className="brand" href="/" onClick={event=>{if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();goView('compose')}}><span className="brand-icon"><Layers3 size={25}/></span>akış<span className="brand-dot">.</span></a>
+return <NavigationContext value={reportNavigation}><SidebarProvider><Sidebar className="app-sidebar"><SidebarHeader><a className="brand" href="/" onClick={event=>{if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();goView('compose')}}><span className="brand-icon"><Layers3 size={25}/></span>akış<span className="brand-dot">.</span></a>
 {companies.length>0?<label className="workspace company-switch"><span className="avatar">{(current?.name||'?').slice(0,1).toUpperCase()}</span><div><select aria-label={t('Şirket seç')} value={state.company?.id||''} disabled={navigationLocked} onChange={e=>switchCompany(e.target.value)}>{companies.map((c:any)=><option key={c.id} value={c.id}>{c.name}</option>)}</select><small>{current?t(roleNames[current.role]):''}</small></div></label>:<div className="workspace"><span className="avatar">S</span><div>{t('Şirket üyeliği yok')}<small>{t('Sistem yöneticisi')}</small></div></div>}
 </SidebarHeader><SidebarContent>{nav.length>0&&<><div className="nav-label">{t('STÜDYO')}</div><SidebarMenu>{nav.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton disabled={navigationLocked} isActive={view===n.id} onClick={()=>goView(n.id)}><n.icon/><span>{n.name}</span>{n.count!==undefined&&<span className={'nav-count '+(n.alert?'alert':'')}>{n.count}</span>}</SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu></>}
 <div className="nav-label">{t('YÖNETİM')}</div><SidebarMenu>{adminNav.map(n=><SidebarMenuItem key={n.id}><SidebarMenuButton disabled={navigationLocked} isActive={view===n.id} onClick={()=>goView(n.id)}><n.icon/><span>{n.name}</span></SidebarMenuButton></SidebarMenuItem>)}</SidebarMenu>
@@ -177,4 +178,4 @@ return <SidebarProvider><Sidebar className="app-sidebar"><SidebarHeader><a class
 {view==='system'&&user.is_system_admin&&<System settings={state.settings} refreshState={loadSession} onNavigationState={systemNavigation}/>}
 {view==='account'&&<Account me={user} refreshSession={loadSession} onNavigationState={accountNavigation}/>}
 </Suspense>
-<footer className="page-footer"><span>akış.</span><span>{t('Daha az sekme. Daha çok üretim.')}</span></footer></main><CommandMenu open={commandOpen} items={commandItems} onClose={()=>setCommandOpen(false)}/></SidebarInset><Toaster richColors position="bottom-right"/></SidebarProvider>}
+<footer className="page-footer"><span>akış.</span><span>{t('Daha az sekme. Daha çok üretim.')}</span></footer></main><CommandMenu open={commandOpen} items={commandItems} onClose={()=>setCommandOpen(false)}/></SidebarInset><Toaster richColors position="bottom-right"/></SidebarProvider></NavigationContext>}

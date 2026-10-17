@@ -120,6 +120,7 @@ Hesap işlem kilidi, 2FA kod biçimi ve kurulum yanıtı doğrulaması `npm run 
 Giriş kilidi, davet parçası ve eski davet yanıtı korumaları `npm run test:auth` ile doğrulanır.
 Sistem işlem kilidi ve yedekleme politikasının salt okunur gösterimi `npm run test:system` ile doğrulanır; bu testler yedek oluşturmaz.
 Kritik işlem ve tek seferlik bilgi varken ekran geçişi korumaları `npm run test:navigation` ile doğrulanır. Ortak geçiş katmanı yalnızca durum bayrakları tutar; parolaları, davet bağlantılarını veya 2FA anahtarlarını saklamaz.
+Uygulama ayarlarındaki kaydedilmemiş düzenlemeler ekran değiştirmeden önce uyarılır; kayıt sürerken geçiş kilitlenir. Arka plan yenilemeleri yalnızca değiştirilmemiş alanları günceller. Form karşılaştırmaları `npm run test:settings` kapsamındadır; gizli anahtarlar cihaz taslağına yazılmaz.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 

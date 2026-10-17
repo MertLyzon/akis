@@ -6,22 +6,31 @@ import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/compo
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh} from './settingsSave';
+import {useNavigationSafety} from './useNavigationSafety';
+import {settingsDraft,mergeSettingsDraft,settingsDraftChanged} from './settingsDraft';
 export default function Settings({settings,refresh,hourFormat,onHourFormat,language,onLanguage}:any){return <><section className="panel pad preference-panel"><h2><Languages size={18}/>{t('Dil ve saat')}</h2><div><label>{t('Uygulama dili')}</label><div className="language-list" role="radiogroup" aria-label={t('Uygulama dili')}><button type="button" role="radio" aria-checked={language==='tr'} className={language==='tr'?'active':''} onClick={()=>onLanguage('tr')}><strong>TR</strong><span>{t('Türkçe')}</span></button><button type="button" role="radio" aria-checked={language==='en'} className={language==='en'?'active':''} onClick={()=>onLanguage('en')}><strong>EN</strong><span>{t('İngilizce')}</span></button></div><p className="field-help">{t('Türkçe varsayılan dildir. Tercihin bu cihazda saklanır.')}</p><label htmlFor="hour-format"><Clock3 size={15}/>{t('Saat gösterimi')}</label><select id="hour-format" value={hourFormat} onChange={e=>onHourFormat(e.target.value)}><option value="24">{t('24 saat — 18:30')}</option><option value="12">{t('12 saat — 06:30 PM')}</option></select><p className="field-help">{t('Takvim, gönderiler ve işlem geçmişindeki bütün saatlere uygulanır. Tercihin bu cihazda saklanır.')}</p></div></section><div className="notice setup-note"><Settings2 size={22}/><div><strong>{t('Bir kez kur, hesaplarını kolayca bağla.')}</strong><p>{t('Her platformun geliştirici panelindeki uygulama bilgilerini kaydet. Dönüş adresini o panelde de birebir aynı şekilde tanımla.')}</p></div></div><div className="connection-grid">{platforms.map(p=><OAuthApp key={p.id} p={p} saved={settings.oauth_apps?.find((a:any)=>a.platform===p.id)} refresh={refresh} origin={settings.app_origin}/>)}</div><div className="notice"><ShieldCheck size={18}/><span>{t(settings.queue==='local'?'Yerel geliştirme işleyicisi çalışıyor. Docker dağıtımında PostgreSQL, Redis ve Celery servisleri kullanılır.':'Gönderimler Redis ve Celery üzerinden arka planda işlenir.')} {t(settings.storage==='cloudinary'?'Medya Cloudinary’de saklanır ve oradan platformlara sunulur.':'Medya sunucu diskinde saklanır.')}</span></div></>}
 function OAuthApp({p,saved,refresh,origin}:any){
-const [client,setClient]=useState(saved?.client_id||''),[secret,setSecret]=useState(''),[redirect,setRedirect]=useState(saved?.redirect_uri||`${origin}/api/oauth/${p.id}/callback`),[mode,setMode]=useState(saved?.mode||'web'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[accepted,setAccepted]=useState(false),[hasSecret,setHasSecret]=useState(false);
+const [draft,setDraft]=useState(()=>settingsDraft(saved,origin,p.id)),[baseline,setBaseline]=useState(()=>settingsDraft(saved,origin,p.id)),[secret,setSecret]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[accepted,setAccepted]=useState(false),[hasSecret,setHasSecret]=useState(false);
+const {client,redirect,mode}=draft;
+const setClient=(client:string)=>setDraft(current=>({...current,client}));
+const setRedirect=(redirect:string)=>setDraft(current=>({...current,redirect}));
+const setMode=(mode:string)=>setDraft(current=>({...current,mode}));
+const incoming=useRef(settingsDraft(saved,origin,p.id));
+const reportPending=useNavigationSafety(undefined,false,settingsDraftChanged(draft,baseline,secret));
 const actions=useRef(new KeyedActions()),mounted=useRef(true);
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
+useEffect(()=>{const next=settingsDraft(saved,origin,p.id),previous=incoming.current;incoming.current=next;setDraft(current=>mergeSettingsDraft(current,previous,next));setBaseline(next)},[saved?.client_id,saved?.redirect_uri,saved?.mode,origin,p.id]);
 async function save(event:any){
 event.preventDefault();
 const payload={platform:p.id,client_id:client,client_secret:secret,redirect_uri:redirect,mode};
 try{await actions.current.run('save',async()=>{
-setBusy(true);setError('');
+reportPending(true);setBusy(true);setError('');
 try{await saveThenRefresh({
 save:()=>api('settings/oauth',payload),
-saved:()=>{if(mounted.current){setSecret('');setAccepted(true);if(payload.client_secret)setHasSecret(true);toast.success(t('Uygulama ayarları kaydedildi.'))}},
+saved:()=>{if(mounted.current){const stored={client:payload.client_id,redirect:payload.redirect_uri,mode:payload.mode};incoming.current=stored;setBaseline(stored);setSecret('');setAccepted(true);if(payload.client_secret)setHasSecret(true);toast.success(t('Uygulama ayarları kaydedildi.'))}},
 refresh:async()=>{if(mounted.current)await refresh()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('Ayarlar kaydedildi ancak güncel durum alınamadı. Listeyi yenileyebilirsin.'))},
-})}finally{if(mounted.current)setBusy(false)}
+})}finally{if(mounted.current){reportPending(false);setBusy(false)}}
 })}catch(e:any){if(mounted.current){setError(e.message);toast.error(t(e.message))}}
 }
 return <section className="panel connection"><div className="connection-heading"><span className="platform-icon large" style={{background:p.color}}>{p.symbol}</span><h2>{p.name}</h2><span className="pill">{t(saved||accepted?'Tanımlı':'Kurulum gerekli')}</span></div>

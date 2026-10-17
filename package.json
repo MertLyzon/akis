@@ -12,7 +12,7 @@
     "test:uploads": "node --experimental-strip-types --test scripts/upload_queue.test.mjs",
     "test:library": "node --experimental-strip-types --test scripts/library_requests.test.mjs",
     "test:team": "node --experimental-strip-types --test scripts/team_actions.test.mjs",
-    "test:settings": "node --experimental-strip-types --test scripts/settings_save.test.mjs",
+    "test:settings": "node --experimental-strip-types --test scripts/settings_save.test.mjs scripts/settings_draft.test.mjs",
     "test:connections": "node --experimental-strip-types --test scripts/connection_draft.test.mjs",
     "test:account": "node --experimental-strip-types --test scripts/account_security.test.mjs",
     "test:auth": "node --experimental-strip-types --test scripts/auth_flow.test.mjs",
