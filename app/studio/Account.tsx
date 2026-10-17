@@ -7,11 +7,13 @@ import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh} from './settingsSave';
 import {normalizedTotpCode,parseTotpSetup} from './accountSecurity';
+import {useNavigationSafety} from './useNavigationSafety';
 
 type Action='password'|'setup'|'enable'|'disable'|'revoke';
-export default function Account({me,refreshSession}:any){
+export default function Account({me,refreshSession,onNavigationState}:any){
 const [setup,setSetup]=useState<{secret:string;uri:string}|null>(null),[code,setCode]=useState(''),[pw,setPw]=useState({current:'',next:'',again:''}),[off,setOff]=useState({password:'',code:''}),[showDisable,setShowDisable]=useState(false),[revoke,setRevoke]=useState(false),[active,setActive]=useState<Action|null>(null),[error,setError]=useState<{action:Action;message:string}|null>(null),[enabled,setEnabled]=useState(!!me.totp_enabled),[passwordChanged,setPasswordChanged]=useState(false);
 const actions=useRef(new KeyedActions()),mounted=useRef(true),latestRefresh=useRef(refreshSession);
+const reportPending=useNavigationSafety(onNavigationState,!!setup);
 latestRefresh.current=refreshSession;
 const busy=active!==null;
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
@@ -19,14 +21,14 @@ useEffect(()=>{setEnabled(!!me.totp_enabled)},[me.totp_enabled]);
 function report(action:Action,message:string){setError({action,message});toast.error(t(message))}
 async function call(action:Action,path:string,body:any,message:string,done?:(result:any)=>void){
 try{return await actions.current.run('account',async()=>{
-setActive(action);setError(null);
+reportPending(true);setActive(action);setError(null);
 let result:any;
 try{await saveThenRefresh({
 save:async()=>{result=await api(path,body);if(action==='setup')result=parseTotpSetup(result)},
 saved:()=>{if(mounted.current){done?.(result);if(message)toast.success(t(message))}},
 refresh:async()=>{if(action!=='setup'&&mounted.current)await latestRefresh.current()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak hesap durumu yenilenemedi. Sayfayı tekrar yenile.'))},
-})}finally{if(mounted.current)setActive(null)}
+})}finally{if(mounted.current){reportPending(false);setActive(null)}}
 })}catch(e:any){if(mounted.current)report(action,e.message);return false}
 }
 function changePassword(event:any){
