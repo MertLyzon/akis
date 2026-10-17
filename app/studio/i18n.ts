@@ -1,6 +1,10 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İstek sunucuda tamamlanmış olabilir. Yeniden oluşturmadan önce şirket listesini yenile.':'The request may have completed on the server. Refresh the company list before creating it again.',
+  'Şirket durumu güncellendi.':'Company status updated.',
+  'İşlem tamamlandı ancak sistem durumu yenilenemedi. Listeyi tekrar yenile.':'The operation completed, but system status could not be refreshed. Refresh the list again.',
+  'Yedekleme politikası alınamadı. Otomatik yedekleme durumu bilinmiyor.':'Backup policy could not be loaded. Automatic backup status is unknown.',
   'İki aşamalı giriş kurulum bilgileri alınamadı. Tekrar dene.':'Two-factor setup details could not be loaded. Try again.',
   'Doğrulama uygulamasındaki 6 haneli kodu gir.':'Enter the six-digit code from your authenticator app.',
   'İşlem tamamlandı ancak hesap durumu yenilenemedi. Sayfayı tekrar yenile.':'The operation completed, but account status could not be refreshed. Refresh the page again.',
