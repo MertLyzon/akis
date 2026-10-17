@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Bu saat, şirketin saat dilimindeki saat değişimi nedeniyle mevcut değil. Başka bir saat seç.':'This time does not exist because of a clock change in the company’s time zone. Choose another time.',
+  'Bu saat, şirketin saat dilimindeki saat değişiminde iki kez yaşanıyor. Başka bir saat seç.':'This time occurs twice because of a clock change in the company’s time zone. Choose another time.',
+  'Şirketin saat dilimi geçersiz. Şirket ayarlarını kontrol et.':'The company’s time zone is invalid. Check company settings.',
   'İşlem tamamlanana kadar bu ekranda kal.':'Stay on this screen until the operation finishes.',
   'Önce bu ekrandaki işlemi tamamla, değişikliklerini kaydet ve tek seferlik bilgileri kapat.':'Finish this screen’s operation, save your changes, and close its one-time details first.',
   'Tek seferlik bilgiler açık':'One-time details are open',
