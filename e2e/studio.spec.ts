@@ -1,5 +1,71 @@
 import {expect,test} from '@playwright/test';
 
+test('team invitation locks repeated submits and preserves fields after failure',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/company')).json();
+  let requests=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/company',route=>requests<2?route.fulfill({json:snapshot}):route.fulfill({status:503,json:{error:'Company refresh unavailable'}}));
+  await page.route('**/api/company/members',async route=>{
+    requests++;
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Invitation temporarily unavailable'}})}
+    return route.fulfill({json:{email:'invite-test@example.com',invite_path:'/join?token=test-only',expires_at:Math.floor(Date.now()/1000)+3600}});
+  });
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const form=page.locator('form.member-add');
+  await form.getByPlaceholder('E-posta',{exact:true}).fill('invite-test@example.com');
+  await form.getByPlaceholder('Ad Soyad (isteğe bağlı)').fill('Test Member');
+  await form.getByLabel('Rol',{exact:true}).selectOption('viewer');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(form.getByPlaceholder('E-posta',{exact:true})).toBeDisabled();
+  await expect(page.locator('input[name="name"]')).toBeDisabled();
+  release();
+  await expect(form.getByPlaceholder('E-posta',{exact:true})).toBeEnabled();
+  await expect(form.getByPlaceholder('E-posta',{exact:true})).toHaveValue('invite-test@example.com');
+  await expect(form.getByPlaceholder('Ad Soyad (isteğe bağlı)')).toHaveValue('Test Member');
+  await expect(form.getByLabel('Rol',{exact:true})).toHaveValue('viewer');
+  await form.getByRole('button',{name:'Davet et',exact:true}).click();
+  await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
+  await expect(page.getByRole('alert').filter({hasText:'Company refresh unavailable'})).toBeVisible();
+  await expect(form.getByPlaceholder('E-posta',{exact:true})).toHaveValue('');
+  expect(requests).toBe(2);
+});
+
+test('team password reset requires confirmation and cannot submit twice',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/company')).json();
+  snapshot.members.push({user_id:'mock-member',email:'reset-test@example.com',name:'Reset Test',role:'editor',totp_enabled:false,must_change_password:false});
+  await page.route('**/api/company',route=>route.fulfill({json:snapshot}));
+  let requests=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/company/members/mock-member/reset-password',async route=>{
+    requests++;
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Reset temporarily unavailable'}})}
+    return route.fulfill({json:{temporary_password:'test-only-password'}});
+  });
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const row=page.getByRole('row').filter({hasText:'reset-test@example.com'});
+  await row.getByRole('button',{name:'Parolayı sıfırla',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('reset-test@example.com');
+  await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();
+  await expect(modal).toBeHidden();expect(requests).toBe(0);
+  await row.getByRole('button',{name:'Parolayı sıfırla',exact:true}).click();
+  await modal.getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(row.getByRole('combobox')).toBeDisabled();
+  await expect(modal.getByRole('button',{name:'Vazgeç',exact:true})).toBeDisabled();
+  release();
+  await expect(modal.getByRole('button',{name:'Onayla',exact:true})).toBeEnabled();
+  await modal.getByRole('button',{name:'Onayla',exact:true}).click();
+  await expect(modal).toBeHidden();
+  await expect(page.locator('.secret-card code')).toHaveText('test-only-password');
+  expect(requests).toBe(2);
+});
+
 test('review locks one post and preserves the rejection note after a failure',async({page})=>{
   await page.goto('/');
   const names=[`Review A ${Date.now()}`,`Review B ${Date.now()}`];
