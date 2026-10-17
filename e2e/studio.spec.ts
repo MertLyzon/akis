@@ -1,5 +1,55 @@
 import {expect,test} from '@playwright/test';
 
+test('connection edits survive background updates and conflicting actions are locked',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const connection={id:'test-connection',platform:'x',label:'Original label',account:'123',expires_at:1925035200,refresh_expires_at:null,token_kind:'manual',days_left:30,can_refresh:true,has_refresh:true};
+  snapshot.connections=[connection];
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
+  let requests=0,deletes=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/connections',async route=>{
+    if(route.request().method()==='DELETE'){deletes++;snapshot.connections=[];return route.fulfill({json:{ok:true}})}
+    requests++;
+    expect(route.request().postDataJSON()).toMatchObject({platform:'x',label:'Unsaved label',token:'test-only-token',refresh_token:'test-only-refresh'});
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Connection temporarily unavailable'}})}
+    connection.label='Unsaved label';return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();
+  await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true});
+  const card=form.locator('xpath=../..');
+  await card.locator('summary').click();
+  await form.getByLabel('Hesap etiketi',{exact:true}).fill('Unsaved label');
+  await form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true}).fill('test-only-token');
+  await form.getByLabel('Yenileme anahtarı',{exact:true}).fill('test-only-refresh');
+  const oldExpiry=await form.getByLabel('Erişim anahtarı bitiş tarihi',{exact:true}).inputValue();
+  connection.expires_at+=86400;connection.label='Externally updated label';
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect(form.getByLabel('Erişim anahtarı bitiş tarihi',{exact:true})).not.toHaveValue(oldExpiry);
+  await expect(form.getByLabel('Hesap etiketi',{exact:true})).toHaveValue('Unsaved label');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true})).toBeDisabled();
+  await expect(card.getByRole('button',{name:'Yenile',exact:true})).toBeDisabled();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toBeDisabled();
+  release();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toBeEnabled();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('test-only-token');
+  await expect(form.getByLabel('Yenileme anahtarı',{exact:true})).toHaveValue('test-only-refresh');
+  await form.getByRole('button',{name:'Bilgileri kaydet',exact:true}).click();
+  await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('');
+  await expect(form.getByLabel('Yenileme anahtarı',{exact:true})).toHaveValue('');
+  await form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();
+  expect(deletes).toBe(0);
+  await form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true}).click();
+  await modal.getByRole('button',{name:'Bağlantıyı kaldır',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect(modal).toBeHidden();expect(deletes).toBe(1);expect(requests).toBe(2);
+});
+
 test('platform settings lock repeated saves and preserve the secret after failure',async({page})=>{
   let requests=0;
   let release!:()=>void;

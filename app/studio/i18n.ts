@@ -1,6 +1,12 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Bağlantı bilgileri':'Connection details',
+  'Hesap bağlantısı açılan pencerede bekleniyor.':'Waiting for account connection in the opened window.',
+  'Bağlantı penceresini kapat':'Close connection window',
+  'Bağlantı durumu yenilenemedi. Listeyi tekrar yenile.':'Connection status could not be refreshed. Refresh the list again.',
+  'İşlem tamamlandı ancak bağlantı durumu yenilenemedi. Listeyi tekrar yenile.':'The operation completed, but connection status could not be refreshed. Refresh the list again.',
+  'Bu platformun kayıtlı erişim bilgileri kaldırılır. Yeniden bağlanman gerekir.':'This platform’s saved credentials will be removed. You will need to connect it again.',
   'Uygulama ayarları':'Application settings',
   'Ayarlar kaydedildi ancak güncel durum alınamadı. Listeyi yenileyebilirsin.':'Settings were saved, but the latest status could not be loaded. You can refresh the list.',
   'Daveti iptal et':'Revoke invitation',
