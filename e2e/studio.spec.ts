@@ -1,5 +1,76 @@
 import {expect,test} from '@playwright/test';
 
+test('login preserves credentials after failure and locks the two-factor step',async({page})=>{
+  await page.goto('/');
+  const session=await (await page.request.get('/api/session')).json();
+  let authenticated=false,requests=0;
+  let release!:()=>void,releaseCode!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve}),codeHeld=new Promise<void>(resolve=>{releaseCode=resolve});
+  await page.route('**/api/session',route=>route.fulfill({json:authenticated?session:{...session,authenticated:false,user:null}}));
+  await page.route('**/api/login',async route=>{
+    requests++;
+    expect(route.request().postDataJSON()).toMatchObject({email:'login-test@example.com',password:'test-only-password'});
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Login temporarily unavailable'}})}
+    if(requests===2)return route.fulfill({status:401,json:{error:'Code required',needs_code:true}});
+    expect(route.request().postDataJSON().code).toBe('012345');
+    if(requests===3){await codeHeld;return route.fulfill({status:401,json:{error:'Code temporarily rejected',needs_code:true}})}
+    authenticated=true;return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();
+  const form=page.getByRole('form',{name:'Şirket hesabına giriş',exact:true});
+  await form.getByLabel('E-posta',{exact:true}).fill('login-test@example.com');
+  await form.getByLabel('Parola',{exact:true}).fill('test-only-password');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(form.getByLabel('E-posta',{exact:true})).toBeDisabled();release();
+  await expect(page.getByRole('alert')).toContainText('Login temporarily unavailable');
+  await expect(form.getByLabel('Parola',{exact:true})).toHaveValue('test-only-password');
+  await form.getByRole('button',{name:'Giriş yap',exact:true}).click();
+  await form.getByLabel('Doğrulama kodu',{exact:true}).fill('012-345');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(3);
+  await expect(form.getByRole('button',{name:'Geri dön',exact:true})).toBeDisabled();releaseCode();
+  await expect(page.getByRole('alert')).toContainText('Code temporarily rejected');
+  await expect(form.getByLabel('Doğrulama kodu',{exact:true})).toHaveValue('012-345');
+  await form.getByRole('button',{name:'Doğrula ve gir',exact:true}).click();
+  await expect(page.locator('#content')).toBeVisible();expect(requests).toBe(4);
+});
+
+test('a late invitation response cannot replace a new link and acceptance is single-flight',async({page})=>{
+  const old='a'.repeat(32),fresh='b'.repeat(32);
+  let releaseOld!:()=>void,releaseAccept!:()=>void;
+  const oldHeld=new Promise<void>(resolve=>{releaseOld=resolve}),acceptHeld=new Promise<void>(resolve=>{releaseAccept=resolve});
+  let lookups=0,accepts=0;
+  const expires=Math.floor(Date.now()/1000)+3600;
+  await page.route('**/api/invites/'+old,async route=>{lookups++;await oldHeld;return route.fulfill({json:{company:'Old company',role:'editor',email:'old@example.com',expires_at:expires}})});
+  await page.route('**/api/invites/'+fresh,route=>route.fulfill({json:{company:'New company',role:'editor',email:'fresh@example.com',expires_at:expires}}));
+  await page.goto('/#davet='+old);
+  const snapshot=await (await page.request.get('/api/state')).json();
+  await expect.poll(()=>lookups).toBe(1);
+  await page.evaluate(value=>{location.hash='#davet='+value},fresh);
+  const form=page.getByRole('form',{name:'Daveti kabul et',exact:true});
+  await expect(form.getByLabel('E-posta',{exact:true})).toHaveValue('fresh@example.com');
+  releaseOld();
+  await form.getByRole('button',{name:'Yeni hesap',exact:true}).click();
+  await form.getByLabel('Ad Soyad · isteğe bağlı',{exact:true}).fill('Invite Test');
+  await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-only-password');
+  await form.getByLabel('Yeni parola tekrar',{exact:true}).fill('test-only-password');
+  await page.route('**/api/invites/'+fresh+'/accept',async route=>{
+    accepts++;expect(route.request().postDataJSON()).toMatchObject({password:'test-only-password',name:'Invite Test'});
+    if(accepts===1){await acceptHeld;return route.fulfill({status:503,json:{error:'Invitation temporarily unavailable'}})}
+    return route.fulfill({json:{company_id:snapshot.company.id}});
+  });
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>accepts).toBe(1);
+  await expect(form.getByRole('button',{name:'Hesabım var',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Davet olmadan devam et',exact:true})).toBeDisabled();releaseAccept();
+  await expect(page.getByRole('alert')).toContainText('Invitation temporarily unavailable');
+  await expect(form.getByLabel('E-posta',{exact:true})).toHaveValue('fresh@example.com');
+  await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('test-only-password');
+  await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();
+  await expect(page.locator('#content')).toBeVisible();expect(accepts).toBe(2);
+});
+
 test('account password changes preserve failed fields and session revocation requires confirmation',async({page})=>{
   let passwords=0,revocations=0;
   let release!:()=>void;
