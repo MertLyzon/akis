@@ -6,14 +6,14 @@ import {api} from './api';
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh} from './settingsSave';
-import {normalizedTotpCode,parseTotpSetup} from './accountSecurity';
+import {accountFormChanged,normalizedTotpCode,parseTotpSetup} from './accountSecurity';
 import {useNavigationSafety} from './useNavigationSafety';
 
 type Action='password'|'setup'|'enable'|'disable'|'revoke';
 export default function Account({me,refreshSession,onNavigationState}:any){
 const [setup,setSetup]=useState<{secret:string;uri:string}|null>(null),[code,setCode]=useState(''),[pw,setPw]=useState({current:'',next:'',again:''}),[off,setOff]=useState({password:'',code:''}),[showDisable,setShowDisable]=useState(false),[revoke,setRevoke]=useState(false),[active,setActive]=useState<Action|null>(null),[error,setError]=useState<{action:Action;message:string}|null>(null),[enabled,setEnabled]=useState(!!me.totp_enabled),[passwordChanged,setPasswordChanged]=useState(false);
 const actions=useRef(new KeyedActions()),mounted=useRef(true),latestRefresh=useRef(refreshSession);
-const reportPending=useNavigationSafety(onNavigationState,!!setup);
+const reportPending=useNavigationSafety(onNavigationState,!!setup,accountFormChanged(pw,off,showDisable));
 latestRefresh.current=refreshSession;
 const busy=active!==null;
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);

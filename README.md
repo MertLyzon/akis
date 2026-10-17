@@ -122,6 +122,7 @@ Sistem işlem kilidi ve yedekleme politikasının salt okunur gösterimi `npm ru
 Kritik işlem ve tek seferlik bilgi varken ekran geçişi korumaları `npm run test:navigation` ile doğrulanır. Ortak geçiş katmanı yalnızca durum bayrakları tutar; parolaları, davet bağlantılarını veya 2FA anahtarlarını saklamaz.
 Uygulama ayarlarındaki kaydedilmemiş düzenlemeler ekran değiştirmeden önce uyarılır; kayıt sürerken geçiş kilitlenir. Arka plan yenilemeleri yalnızca değiştirilmemiş alanları günceller. Form karşılaştırmaları `npm run test:settings` kapsamındadır; gizli anahtarlar cihaz taslağına yazılmaz.
 Bağlantı formlarında da kaydedilmemiş erişim bilgileri için ayrılma uyarısı vardır. Kayıt veya OAuth penceresi açıkken geçiş kilitlenir; pencere kapatılınca kilit çözülür, süren bir başlangıç isteği varsa tamamlanması beklenir. Anahtarlar yalnızca açık formun belleğinde tutulur. Karşılaştırma ve OAuth mesaj kontrolleri `npm run test:connections` ile doğrulanır.
+Şirket ayarları, yarım kalmış davetler ve hesap güvenliği formları da ayrılma uyarısına dahildir. Şirket verileri yenilendiğinde yerel düzenlemeler korunur; bir formun başarıyla kaydı başka formun uyarısını temizlemez. Parola ve kodlar kalıcı taslağa yazılmaz. Kontroller `npm run test:team` ve `npm run test:account` kapsamındadır.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 

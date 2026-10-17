@@ -1,5 +1,73 @@
 import {expect,test} from '@playwright/test';
 
+test('company refresh preserves edits and saving one form does not discard an invitation',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/company')).json();
+  let saves=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/company',async route=>{
+    if(route.request().method()==='PATCH'){
+      saves++;
+      if(saves===1){await held;return route.fulfill({status:503,json:{error:'Company settings temporarily unavailable'}})}
+      const body=route.request().postDataJSON();
+      Object.assign(snapshot.company,body,{name:body.name.trim()});
+      return route.fulfill({json:{ok:true}});
+    }
+    return route.fulfill({json:snapshot});
+  });
+  await page.route('**/api/company/members/*',route=>route.fulfill({json:{ok:true}}));
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const form=page.getByRole('form',{name:'Şirket ayarları',exact:true});
+  await form.getByLabel('Şirket adı',{exact:true}).fill('  My edited company  ');
+  const invite=page.locator('form.member-add');
+  await invite.getByPlaceholder('E-posta',{exact:true}).fill('unsaved-invite@example.com');
+  await invite.getByLabel('Rol',{exact:true}).selectOption('viewer');
+  const timezone=snapshot.company.timezone==='Europe/London'?'Europe/Berlin':'Europe/London';
+  snapshot.company.name='Externally updated company';snapshot.company.timezone=timezone;
+  await page.getByRole('combobox',{name:snapshot.members[0].email+' Rol',exact:true}).selectOption(snapshot.members[0].role==='viewer'?'editor':'viewer');
+  await expect(form.getByLabel('Saat dilimi',{exact:true})).toHaveValue(timezone);
+  await expect(form.getByLabel('Şirket adı',{exact:true})).toHaveValue('  My edited company  ');
+  await form.getByRole('button',{name:'Kaydet',exact:true}).click();
+  await expect.poll(()=>saves).toBe(1);
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeDisabled();release();
+  await expect(page.getByRole('alert').filter({hasText:'Company settings temporarily unavailable'})).toBeVisible();
+  await expect(form.getByLabel('Şirket adı',{exact:true})).toHaveValue('  My edited company  ');
+  await expect(invite.getByPlaceholder('E-posta',{exact:true})).toHaveValue('unsaved-invite@example.com');
+  await form.getByRole('button',{name:'Kaydet',exact:true}).click();
+  await expect(form.getByLabel('Şirket adı',{exact:true})).toHaveValue('My edited company');
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await invite.getByPlaceholder('E-posta',{exact:true}).fill('');
+  await invite.getByLabel('Rol',{exact:true}).selectOption('editor');
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
+  await expect(modal).toBeHidden();expect(saves).toBe(2);
+});
+
+test('cancelling a populated two-factor disable form clears only its own navigation warning',async({page})=>{
+  await page.goto('/');
+  const session=await (await page.request.get('/api/session')).json();
+  session.user.totp_enabled=true;
+  await page.route('**/api/session',route=>route.fulfill({json:session}));
+  await page.reload();
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await page.getByRole('button',{name:'İki aşamalı girişi kapat',exact:true}).click();
+  const form=page.getByRole('form',{name:'İki aşamalı girişi kapat',exact:true});
+  await form.getByLabel('Mevcut parola',{exact:true}).fill('test-only-password');
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const modal=page.getByRole('alertdialog');
+  await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(form.getByLabel('Mevcut parola',{exact:true})).toHaveValue('test-only-password');
+  await form.getByRole('button',{name:'Vazgeç',exact:true}).click();
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket ayarları',exact:true})).toBeVisible();
+  await expect(modal).toBeHidden();
+});
+
 test('connection settings shortcut confirms before discarding unsaved access details',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/state')).json();
@@ -270,6 +338,10 @@ test('account password changes preserve failed fields and session revocation req
   await form.getByLabel('Mevcut parola',{exact:true}).fill('test-current-password');
   await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-new-password');
   await form.getByLabel('Yeni parola tekrar',{exact:true}).fill('test-new-password');
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toContainText('Kaydedilmemiş değişiklikler');
+  await page.getByRole('alertdialog').getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('test-new-password');
   await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
   await expect.poll(()=>passwords).toBe(1);
   await expect(form.getByLabel('Mevcut parola',{exact:true})).toBeDisabled();
@@ -281,6 +353,10 @@ test('account password changes preserve failed fields and session revocation req
   await form.getByRole('button',{name:'Parolayı değiştir',exact:true}).click();
   await expect(form.getByLabel('Mevcut parola',{exact:true})).toHaveValue('');
   await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('');
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket ayarları',exact:true})).toBeVisible();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
   await page.getByRole('button',{name:'Diğer cihazlardan çıkış yap',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();expect(revocations).toBe(0);
