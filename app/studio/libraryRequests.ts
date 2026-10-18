@@ -1,6 +1,7 @@
 // Ref-owned guards take effect immediately, before React renders disabled controls.
 export class KeyedActions{
   private active=new Set<string>();
+  get size(){return this.active.size}
   has(key:string){return this.active.has(key)}
   async run(key:string,operation:()=>Promise<void>){
     if(this.active.has(key))return false;

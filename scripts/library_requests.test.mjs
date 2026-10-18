@@ -1,6 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
+import {libraryDraft,libraryDraftChanged} from '../app/studio/libraryDraft.ts';
+
+test('library editor captures its own label values without retaining the asset object',()=>{
+  const asset={folder:'Original',tags:['one','two']},draft=libraryDraft(asset);
+  asset.folder='Refreshed';asset.tags.push('three');
+  assert.deepEqual(draft,{folder:'Original',tags:'one, two'});
+  assert.equal(libraryDraftChanged(draft,{...draft}),false);
+});
+test('empty library metadata starts clean',()=>{
+  const draft=libraryDraft({});assert.deepEqual(draft,{folder:'',tags:''});
+  assert.equal(libraryDraftChanged(draft,libraryDraft({})),false);
+});
+for(const field of ['folder','tags'])test(`a library ${field} edit warns until restored or saved`,()=>{
+  const baseline=libraryDraft({folder:'Folder',tags:['tag']});
+  const draft={...baseline,[field]:'Edited'};
+  assert.equal(libraryDraftChanged(draft,baseline),true);
+  assert.equal(libraryDraftChanged(draft,draft),false);
+  assert.equal(libraryDraftChanged(baseline,baseline),false);
+});
+test('deliberately clearing library labels is an unsaved edit',()=>{
+  const baseline=libraryDraft({folder:'Folder',tags:['tag']});
+  assert.equal(libraryDraftChanged({folder:'',tags:''},baseline),true);
+});
+test('the navigation action count stays positive until all independent mutations settle',async()=>{
+  const actions=new KeyedActions(),a=deferred(),b=deferred();
+  assert.equal(actions.size,0);
+  const first=actions.run('a',()=>a.promise),second=actions.run('b',()=>b.promise);
+  assert.equal(actions.size,2);a.resolve();await first;assert.equal(actions.size,1);
+  b.reject(Error('offline'));await assert.rejects(second,/offline/);assert.equal(actions.size,0);
+});
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 
