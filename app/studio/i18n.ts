@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Yükleme sonucu doğrulanamadı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.':'The upload result could not be confirmed. The file may have reached the server. Check the library before uploading again.',
+  'Dosya yükleme zaman aşımına uğradı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.':'The upload timed out. The file may have reached the server. Check the library before uploading again.',
+  'Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.':'Upload stopped. Files that reached the server may remain in the library. Check before uploading again.',
   'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'The server did not respond in time. Check your connection and try again.',
   'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The request timed out. The operation may have completed on the server. Check the result before trying again.',
   'Medya bilgileri':'Media details',

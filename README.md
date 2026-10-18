@@ -129,6 +129,7 @@ Medya klasör/etiket düzenlemesi listeden bağımsız bir pencerede tutulur; li
 JSON isteklerinin başlık ve yanıt gövdesi birlikte zaman sınırına tabidir: sunucu adresi kontrolü 15 sn, durum yenilemesi 20 sn, normal API istekleri 60 sn; mevcut manuel yedek/doğrulama işlemleri 5 dk. Zaman aşımı otomatik yeniden gönderim yapmaz; yazma isteğinde sunucuda tamamlanmış olabileceği açıklanır. Bu değişiklik otomatik yedeklemeyi açmaz. Kontroller `npm run test:requests` ile çalışır.
 Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:uploads`
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
+İptal/tamamlanma bildirimi sırasında başlatılan yeni yükleme eski işlemin kilit açma bildirimiyle serbest bırakılmaz. Aktarımın iptal çağrısı hata verse de arayüz kilidi çözülür ve eski yanıtlar yok sayılır. Bağlantı kesintisi, zaman aşımı veya iptal sonrasında dosya sunucuya ulaşmış olabileceğinden yeniden yüklemeden önce kütüphane kontrolü önerilir; otomatik yeniden yükleme yapılmaz.
 
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
