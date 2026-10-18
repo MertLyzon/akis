@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'The server did not respond in time. Check your connection and try again.',
+  'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The request timed out. The operation may have completed on the server. Check the result before trying again.',
   'Medya bilgileri':'Media details',
   'İçerik değişti veya kaldırıldı. Pencereyi kapatıp güncel liste üzerinden yeniden aç.':'This content changed or was removed. Close this dialog and reopen it from the refreshed list.',
   'İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.':'The operation completed, but the post list could not be refreshed. Refresh the list again.',

@@ -1,5 +1,28 @@
 import {expect,test} from '@playwright/test';
 
+test('a timed-out draft save keeps the editor and only an explicit retry resends its idempotency key',async({page})=>{
+  await page.clock.install();
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve}),bodies:any[]=[];
+  await page.route('**/api/posts',async route=>{
+    bodies.push(route.request().postDataJSON());
+    if(bodies.length===1){await held;try{await route.fulfill({json:{id:'test-late-draft',outcome:'draft'}})}catch{/* the deadline aborted this request */}return}
+    return route.fulfill({json:{id:'test-retried-draft',outcome:'draft'}});
+  });
+  await page.goto('/');
+  await page.locator('#content').fill('Keep this text after timeout');
+  await page.getByRole('button',{name:'Taslağı kaydet',exact:true}).click();
+  await expect.poll(()=>bodies.length).toBe(1);
+  await page.clock.fastForward(60_001);
+  await expect(page.getByText('İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.',{exact:true})).toBeVisible();
+  await expect(page.locator('#content')).toHaveValue('Keep this text after timeout');
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeEnabled();
+  expect(bodies).toHaveLength(1);release();
+  await page.getByRole('button',{name:'Taslağı kaydet',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Gönderiler',exact:true})).toBeVisible();
+  expect(bodies).toHaveLength(2);expect(bodies[1].requestId).toBe(bodies[0].requestId);
+});
+
 test('library labels survive list refresh and failed saves without duplicate mutations',async({page})=>{
   const asset={id:'test-library-labels',filename:'library-labels.png',folder:'Original',tags:['one'],status:'processing',mime_type:'image/png',url:null,archived:false};
   let items=[asset],requests=0,release!:()=>void;
