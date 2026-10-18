@@ -16,8 +16,8 @@ export class LatestRequest{
   invalidate(){this.version++}
   async run<T>(request:()=>Promise<T>,success:(value:T)=>void,failure:(error:unknown)=>void,settled:()=>void){
     const version=++this.version;
-    try{const value=await request();if(version===this.version)success(value)}
-    catch(error){if(version===this.version)failure(error)}
+    try{const value=await request();if(version===this.version){success(value);return true}return false}
+    catch(error){if(version===this.version)failure(error);return false}
     finally{if(version===this.version)settled()}
   }
 }

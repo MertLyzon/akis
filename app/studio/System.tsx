@@ -17,12 +17,12 @@ const latency=(value:any)=>typeof value==='number'?` · ${value.toLocaleString(l
 
 export default function System({settings,refreshState,onNavigationState}:any){
 const [data,setData]=useState<any>(null),[active,setActive]=useState(''),[secret,setSecret]=useState<any>(null),[publicUrl,setPublicUrl]=useState(settings.public_base_url||''),[loadError,setLoadError]=useState(''),[actionError,setActionError]=useState(''),[reading,setReading]=useState(false),[confirmation,setConfirmation]=useState<any>(null);
-const busy=!!active,actions=useRef(new KeyedActions()),overview=useRef(new LatestRequest()),inFlight=useRef<Promise<void>|null>(null),mounted=useRef(true),latestRefresh=useRef(refreshState);
+const busy=!!active,actions=useRef(new KeyedActions()),overview=useRef(new LatestRequest()),inFlight=useRef<Promise<boolean>|null>(null),mounted=useRef(true),latestRefresh=useRef(refreshState);
 const reportPending=useNavigationSafety(onNavigationState,!!secret);
 latestRefresh.current=refreshState;
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;overview.current.invalidate();inFlight.current=null}},[]);
 const load=useCallback((force=false)=>{
-if(!mounted.current)return Promise.resolve();
+if(!mounted.current)return Promise.resolve(false);
 if(inFlight.current&&!force)return inFlight.current;
 setReading(true);
 const request=overview.current.run(()=>api('system/overview'),value=>{setData(value);setLoadError('')},(error:any)=>setLoadError(error.message),()=>setReading(false));
@@ -32,7 +32,7 @@ useEffect(()=>{load();const id=setInterval(()=>{if(!document.hidden)load()},1000
 async function act(kind:string,write:()=>Promise<any>,done:(result:any)=>void,refreshSession=false){
 try{return await actions.current.run('system',async()=>{
 reportPending(true);setActive(kind);setActionError('');let result:any;
-try{await saveThenRefresh({save:async()=>{result=await write()},saved:()=>{if(mounted.current)done(result)},refresh:async()=>{if(mounted.current){await load(true);if(refreshSession&&mounted.current)await latestRefresh.current()}},refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak sistem durumu yenilenemedi. Listeyi tekrar yenile.'))}})}
+try{await saveThenRefresh({save:async()=>{result=await write()},saved:()=>{if(mounted.current)done(result)},refresh:async()=>{if(mounted.current){const overviewLoaded=await load(true);const sessionLoaded=refreshSession&&mounted.current?await latestRefresh.current():true;return overviewLoaded&&sessionLoaded!==false}},refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak sistem durumu yenilenemedi. Listeyi tekrar yenile.'))}})}
 finally{if(mounted.current){reportPending(false);setActive('')}}
 })}catch(error:any){if(mounted.current){setActionError(kind==='company'&&(!error.status||error.status>=500)?t(error.message)+' '+t('İstek sunucuda tamamlanmış olabilir. Yeniden oluşturmadan önce şirket listesini yenile.'):error.message);toast.error(t(error.message))}return false}
 }

@@ -26,7 +26,7 @@ let result:any;
 try{await saveThenRefresh({
 save:async()=>{result=await api(path,body);if(action==='setup')result=parseTotpSetup(result)},
 saved:()=>{if(mounted.current){done?.(result);if(message)toast.success(t(message))}},
-refresh:async()=>{if(action!=='setup'&&mounted.current)await latestRefresh.current()},
+refresh:async()=>{if(action!=='setup'&&mounted.current)return await latestRefresh.current()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak hesap durumu yenilenemedi. Sayfayı tekrar yenile.'))},
 })}finally{if(mounted.current){reportPending(false);setActive(null)}}
 })}catch(e:any){if(mounted.current)report(action,e.message);return false}

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveThenRefresh} from '../app/studio/settingsSave.ts';
-import {KeyedActions} from '../app/studio/libraryRequests.ts';
+import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 function steps(overrides={}){
@@ -23,6 +23,42 @@ test('save failure never clears fields or refreshes the list',async()=>{
 test('refresh failure after a committed save is not treated as a failed save',async()=>{
   const h=steps({refresh:async()=>{throw Error('offline')}});
   await saveThenRefresh(h.callbacks);
+  assert.deepEqual(h.events,['save','saved','refresh-failed']);
+});
+
+test('an explicitly unsuccessful refresh warns without repeating or undoing the save',async()=>{
+  const h=steps({refresh:async()=>false});await saveThenRefresh(h.callbacks);
+  assert.deepEqual(h.events,['save','saved','refresh-failed']);
+});
+
+test('a failing warning callback is not invoked twice',async()=>{
+  let warnings=0;
+  const h=steps({refresh:async()=>false,refreshFailed:()=>{warnings++;throw Error('warning failed')}});
+  await assert.rejects(saveThenRefresh(h.callbacks),/warning failed/);
+  assert.equal(warnings,1);assert.deepEqual(h.events,['save','saved']);
+});
+
+test('successful boolean and legacy void refreshes do not show a warning',async()=>{
+  for(const result of [true,undefined]){
+    const h=steps({refresh:async()=>result});await saveThenRefresh(h.callbacks);
+    assert.deepEqual(h.events,['save','saved']);
+  }
+});
+
+test('a handled overview failure still warns the completed-save flow',async()=>{
+  const latest=new LatestRequest(),h=steps();
+  h.callbacks.refresh=()=>latest.run(async()=>{throw Error('overview unavailable')},()=>h.events.push('loaded'),()=>h.events.push('load-error'),()=>{});
+  await saveThenRefresh(h.callbacks);
+  assert.deepEqual(h.events,['save','saved','load-error','refresh-failed']);
+});
+
+test('an overview refresh superseded by another read does not acknowledge stale data',async()=>{
+  const latest=new LatestRequest(),held=deferred(),h=steps();
+  h.callbacks.refresh=()=>latest.run(()=>held.promise,()=>h.events.push('old-data'),()=>{},()=>{});
+  const saving=saveThenRefresh(h.callbacks);
+  await Promise.resolve();await Promise.resolve();
+  assert.equal(await latest.run(async()=>({fresh:true}),()=>{},()=>{},()=>{}),true);
+  held.resolve({old:true});await saving;
   assert.deepEqual(h.events,['save','saved','refresh-failed']);
 });
 
