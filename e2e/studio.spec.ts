@@ -1,5 +1,62 @@
 import {expect,test} from '@playwright/test';
 
+test('library labels survive list refresh and failed saves without duplicate mutations',async({page})=>{
+  const asset={id:'test-library-labels',filename:'library-labels.png',folder:'Original',tags:['one'],status:'processing',mime_type:'image/png',url:null,archived:false};
+  let items=[asset],requests=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(/\/api\/media\?/,route=>route.fulfill({json:{items,folders:['Original']}}));
+  await page.route('**/api/media/test-library-labels',async route=>{
+    requests++;
+    expect(route.request().postDataJSON()).toEqual({folder:'Edited folder',tags:['one',' two']});
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Media temporarily unavailable'}})}
+    return route.fulfill({json:{...asset,folder:'Edited folder',tags:['one','two']}});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  await page.getByRole('button',{name:'Klasör ve etiket düzenle',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Klasör ve etiket düzenle',exact:true});
+  const form=dialog.getByRole('form',{name:'Medya bilgileri',exact:true});
+  await form.getByLabel('Klasör',{exact:true}).fill('Edited folder');
+  await form.getByLabel('Etiketler, virgülle',{exact:true}).fill('one, two');
+  items=[];
+  await expect(page.locator('.library-card')).toHaveCount(0);
+  await expect(form.getByLabel('Klasör',{exact:true})).toHaveValue('Edited folder');
+  await form.getByRole('button',{name:'Vazgeç',exact:true}).click();
+  const discard=page.getByRole('alertdialog');
+  await expect(discard).toContainText('Kaydedilmemiş değişiklikler');
+  await discard.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(form.getByLabel('Etiketler, virgülle',{exact:true})).toHaveValue('one, two');
+  await form.evaluate(node=>{node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(form.getByRole('button',{name:'Vazgeç',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true,includeHidden:true})).toBeDisabled();release();
+  await expect(form.getByRole('alert')).toContainText('Media temporarily unavailable');
+  await expect(form.getByLabel('Klasör',{exact:true})).toHaveValue('Edited folder');
+  await form.getByRole('button',{name:'Kaydet',exact:true}).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeEnabled();expect(requests).toBe(2);
+});
+
+test('discarding library label edits clears the navigation warning without saving',async({page})=>{
+  const asset={id:'test-library-discard',filename:'discard-labels.png',folder:'Original',tags:[],status:'failed',error:'Test fixture',mime_type:'image/png',url:null,archived:false};
+  let requests=0;
+  await page.route(/\/api\/media\?/,route=>route.fulfill({json:{items:[asset],folders:['Original']}}));
+  await page.route('**/api/media/test-library-discard',route=>{requests++;return route.fulfill({json:asset})});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  await page.getByRole('button',{name:'Klasör ve etiket düzenle',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Klasör ve etiket düzenle',exact:true});
+  await dialog.getByLabel('Klasör',{exact:true}).fill('Unsaved folder');
+  await page.keyboard.press('Escape');
+  const discard=page.getByRole('alertdialog');
+  await expect(discard).toContainText('Kaydedilmemiş değişiklikler');
+  await discard.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect(dialog).toBeHidden();
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
+  await expect(discard).toBeHidden();expect(requests).toBe(0);
+});
+
 for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled','Planı iptal et']])test(`a stale ${kind} confirmation must be reopened against the refreshed version`,async({page})=>{
   await page.goto('/');
   const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Original ${kind} confirmation`,platforms:['x']}});
