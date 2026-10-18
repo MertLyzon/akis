@@ -1,4 +1,5 @@
 import {t} from './i18n';
+import {StateCache} from './stateCache';
 import {fetchJson,RequestTimeoutError,InvalidJsonError,apiTimeout,STATE_TIMEOUT_MS,SERVER_CHECK_TIMEOUT_MS} from './requestDeadline';
 
 export const platforms=[{id:'x',name:'X / Twitter',symbol:'𝕏',color:'#171c25',hint:'Metin, görsel ve video'},{id:'instagram',name:'Instagram',symbol:'◎',color:'#dc4369',hint:'Görsel ve Reels'},{id:'tiktok',name:'TikTok',symbol:'♪',color:'#171c25',hint:'Görselden video ve aktarım'},{id:'whatsapp',name:'WhatsApp',symbol:'◉',color:'#159467',hint:'Medya ve şablon mesajlar'}];
@@ -11,7 +12,7 @@ export const roleNames:Record<string,string>={admin:'Şirket yöneticisi',approv
 // Active company for every request. Stored per browser so a refresh keeps the same workspace.
 let company='';
 try{company=localStorage.getItem('akis-company')||''}catch{}
-export function setCompany(id:string){company=id;try{localStorage.setItem('akis-company',id)}catch{}}
+export function setCompany(id:string){if(company!==id)forgetState();company=id;try{localStorage.setItem('akis-company',id)}catch{}}
 export function companyHeader():Record<string,string>{return company?{'X-Akis-Company':company}:{}}
 
 // ---- Native app (Tauri) runtime ----
@@ -22,9 +23,10 @@ function stored(key:string){try{return localStorage.getItem(key)||''}catch{retur
 function store(key:string,value:string){try{value?localStorage.setItem(key,value):localStorage.removeItem(key)}catch{}}
 let server=isApp?stored('akis-server'):'';
 let token=isApp?stored('akis-token'):'';
+let authRevision=0;
 export function serverUrl(){return server}
-export function setServer(url:string){server=url.trim().replace(/\/+$/,'');store('akis-server',server)}
-export function setToken(t:string){token=t;store('akis-token',t)}
+export function setServer(url:string){const next=url.trim().replace(/\/+$/,'');if(server!==next){authRevision++;forgetState()}server=next;store('akis-server',server)}
+export function setToken(t:string){if(token!==t){authRevision++;forgetState()}token=t;store('akis-token',t)}
 export function authHeaders():Record<string,string>{return isApp?{'X-Akis-Client':'app',...(token?{Authorization:'Bearer '+token}:{})}:{}}
 export function apiUrl(path:string){return server+'/api/'+path}
 // Media URLs from the server are relative (/api/media/...) or absolute Cloudinary links.
@@ -34,11 +36,26 @@ export async function openExternal(url:string){if(isApp){const {openUrl}=await i
 
 export class ApiError extends Error{data:any;status:number;constructor(message:string,status:number,data:any){super(message);this.status=status;this.data=data}}
 function errorMessage(data:any){const message=t(data?.error||'İşlem tamamlanamadı.');return data?.support_code?`${message} ${t('Destek kodu')}: ${data.support_code}`:message}
-export async function api(path:string,body?:any,method?:string){const verb=method||(body?'POST':'GET');let r:Response,j:any;try{({response:r,data:j}=await fetchJson(apiUrl(path),{method:verb,headers:{...companyHeader(),...authHeaders(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})},apiTimeout(path)))}catch(error){if(error instanceof RequestTimeoutError)throw new Error(['GET','HEAD'].includes(verb.toUpperCase())?'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.');if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}if(!r.ok){if(r.status===401&&isApp&&token)setToken('');throw new ApiError(errorMessage(j),r.status,j)}if(isApp&&j&&typeof j.token==='string')setToken(j.token);return j;}
+export async function api(path:string,body?:any,method?:string){
+const revision=authRevision,verb=method||(body?'POST':'GET');let r:Response,j:any;
+try{({response:r,data:j}=await fetchJson(apiUrl(path),{method:verb,headers:{...companyHeader(),...authHeaders(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})},apiTimeout(path)))}catch(error){if(error instanceof RequestTimeoutError)throw new Error(['GET','HEAD'].includes(verb.toUpperCase())?'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.');if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}
+if(!r.ok){if(r.status===401&&isApp&&token&&revision===authRevision)setToken('');throw new ApiError(errorMessage(j),r.status,j)}
+if(isApp&&j&&typeof j.token==='string'&&revision===authRevision)setToken(j.token);
+return j;
+}
 // Polled state: sends the last ETag so an unchanged workspace costs a bodiless 304 and no re-render.
-let stateTag='',stateKey='';
-export async function fetchState():Promise<any|null>{const key=company;let r:Response,j:any;try{({response:r,data:j}=await fetchJson(apiUrl('state'),{cache:'no-store',headers:{...companyHeader(),...authHeaders(),...(stateTag&&stateKey===key?{'If-None-Match':stateTag}:{})}},STATE_TIMEOUT_MS))}catch(error){if(error instanceof RequestTimeoutError)throw new Error('Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.');if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}if(r.status===304)return null;if(!r.ok){if(r.status===401&&isApp&&token)setToken('');throw new ApiError(errorMessage(j),r.status,j)}stateTag=r.headers.get('ETag')||'';stateKey=key;return j}
-export function forgetState(){stateTag=''}
+const stateCache=new StateCache();
+export async function fetchState():Promise<any|null>{
+const request=stateCache.begin(company),revision=authRevision;let r:Response,j:any;
+try{({response:r,data:j}=await fetchJson(apiUrl('state'),{cache:'no-store',headers:{...companyHeader(),...authHeaders(),...request.headers}},STATE_TIMEOUT_MS))}catch(error){
+if(!request.current())return null;
+if(error instanceof RequestTimeoutError)throw new Error('Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.');if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}
+if(!request.current())return null;
+if(r.status===304)return null;
+if(!r.ok){if(r.status===401&&isApp&&token&&revision===authRevision)setToken('');throw new ApiError(errorMessage(j),r.status,j)}
+request.commit(r.headers.get('ETag')||'');return j;
+}
+export function forgetState(){stateCache.clear()}
 export function dateInput(stamp:number|null){if(!stamp)return '';const d=new Date(stamp*1000);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
 export type HourFormat='24'|'12';
 export function readHourFormat():HourFormat{try{return localStorage.getItem('akis-hour-format')==='12'?'12':'24'}catch{return '24'}}
