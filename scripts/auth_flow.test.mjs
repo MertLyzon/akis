@@ -35,3 +35,12 @@ test('credentials cannot be submitted twice or change server while login is pend
   assert.equal(await actions.run('login',async()=>{servers++}),false);
   wait.resolve();await first;assert.equal(logins,1);assert.equal(servers,0);
 });
+
+test('session retries cannot overlap and a failed check releases the guard',async()=>{
+  const actions=new KeyedActions(),wait=deferred();let checks=0;
+  const first=actions.run('session',async()=>{checks++;await wait.promise});
+  assert.equal(await actions.run('session',async()=>{checks++}),false);
+  wait.reject(Error('connection lost'));await assert.rejects(first,/connection lost/);
+  assert.equal(await actions.run('session',async()=>{checks++}),true);
+  assert.equal(checks,2);
+});

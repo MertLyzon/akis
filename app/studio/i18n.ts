@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Oturum kontrol edilemedi':'Could not check your session',
+  'Bağlantını kontrol edip oturumunu yeniden kontrol et. Parolan tekrar gönderilmeyecek.':'Check your connection and check your session again. Your password will not be sent again.',
+  'Oturumu yeniden kontrol et':'Check session again',
   'Yükleme sonucu doğrulanamadı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.':'The upload result could not be confirmed. The file may have reached the server. Check the library before uploading again.',
   'Dosya yükleme zaman aşımına uğradı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.':'The upload timed out. The file may have reached the server. Check the library before uploading again.',
   'Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.':'Upload stopped. Files that reached the server may remain in the library. Check before uploading again.',
