@@ -447,6 +447,7 @@ test('system administration preserves failed forms and never starts backups auto
   await expect(page.locator('.secret-card code')).toHaveText('test-only-password');
   await expect(form.getByPlaceholder('Şirket adı',{exact:true})).toHaveValue('');
   await expect(page.getByRole('alert').filter({hasText:'Overview temporarily unavailable'})).toBeVisible();
+  await expect(page.getByText('İşlem tamamlandı ancak sistem durumu yenilenemedi. Listeyi tekrar yenile.',{exact:true})).toBeVisible();
   failRefresh=false;await page.getByRole('button',{name:'Tekrar dene',exact:true}).click();
   const row=page.getByRole('row').filter({hasText:'Test system company'});
   await row.getByRole('button',{name:'Askıya al',exact:true}).click();
@@ -608,6 +609,26 @@ test('a late invitation response cannot replace a new link and acceptance is sin
   await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('test-only-password');
   await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();
   await expect(page.locator('#content')).toBeVisible();expect(accepts).toBe(2);
+});
+
+test('a committed password change warns if session refresh fails without resending the password',async({page})=>{
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  let passwords=0,checks=0;
+  await page.route('**/api/session',route=>{checks++;return route.fulfill({status:503,json:{error:'Session temporarily unavailable'}})});
+  await page.route('**/api/me/password',route=>{passwords++;return route.fulfill({json:{ok:true}})});
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  const form=page.getByRole('form',{name:'Parolayı değiştir',exact:true});
+  await form.getByLabel('Mevcut parola',{exact:true}).fill('test-current-password');
+  await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-new-password');
+  await form.getByLabel('Yeni parola tekrar',{exact:true}).fill('test-new-password');
+  await form.getByRole('button',{name:'Parolayı değiştir',exact:true}).click();
+  await expect(page.getByText('Parolan değiştirildi.',{exact:true})).toBeVisible();
+  await expect(page.getByText('İşlem tamamlandı ancak hesap durumu yenilenemedi. Sayfayı tekrar yenile.',{exact:true})).toBeVisible();
+  await expect(form.getByLabel('Mevcut parola',{exact:true})).toHaveValue('');
+  await expect(form.getByLabel('Yeni parola tekrar',{exact:true})).toHaveValue('');
+  await expect(form.getByRole('button',{name:'Parolayı değiştir',exact:true})).toBeEnabled();
+  await expect(form.getByRole('alert')).toHaveCount(0);
+  expect(passwords).toBe(1);expect(checks).toBe(1);
 });
 
 test('account password changes preserve failed fields and session revocation requires confirmation',async({page})=>{

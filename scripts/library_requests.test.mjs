@@ -68,7 +68,7 @@ function observer(){const values=[],errors=[],settled=[];return {values,errors,s
 test('a slow previous filter cannot replace the latest results',async()=>{
   const requests=new LatestRequest(),old=deferred(),fresh=deferred(),o=observer();
   const first=requests.run(()=>old.promise,...o.callbacks),second=requests.run(()=>fresh.promise,...o.callbacks);
-  fresh.resolve(['new']);await second;old.resolve(['old']);await first;
+  fresh.resolve(['new']);assert.equal(await second,true);old.resolve(['old']);assert.equal(await first,false);
   assert.deepEqual(o.values,[['new']]);assert.deepEqual(o.settled,[true]);
 });
 
@@ -82,7 +82,7 @@ test('obsolete failure cannot show an error or clear loading for a newer filter'
 
 test('latest failure is reported once and ends loading',async()=>{
   const requests=new LatestRequest(),o=observer(),error=Error('offline');
-  await requests.run(()=>Promise.reject(error),...o.callbacks);
+  assert.equal(await requests.run(()=>Promise.reject(error),...o.callbacks),false);
   assert.deepEqual(o.errors,[error]);assert.deepEqual(o.values,[]);assert.deepEqual(o.settled,[true]);
 });
 
@@ -90,7 +90,7 @@ test('unmount invalidates both success and failure callbacks',async()=>{
   for(const fail of [false,true]){
     const requests=new LatestRequest(),wait=deferred(),o=observer();
     const result=requests.run(()=>wait.promise,...o.callbacks);requests.invalidate();
-    if(fail)wait.reject(Error('offline'));else wait.resolve(['old']);await result;
+    if(fail)wait.reject(Error('offline'));else wait.resolve(['old']);assert.equal(await result,false);
     assert.deepEqual(o.values,[]);assert.deepEqual(o.errors,[]);assert.deepEqual(o.settled,[]);
   }
 });

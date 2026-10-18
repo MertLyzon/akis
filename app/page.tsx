@@ -67,8 +67,9 @@ window.addEventListener('beforeunload',warn);return()=>window.removeEventListene
 useEffect(()=>{const on=()=>setInvite(inviteToken());window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on)},[]);
 const refresh=useCallback(async()=>{if(sessionActions.current.has('logout'))return;if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);if(context===refreshContext.current)setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
 const loadSession=useCallback(async()=>{
-if(sessionActions.current.has('logout'))return;
+if(sessionActions.current.has('logout'))return false;
 const context=refreshContext.current;
+let loaded=false;
 // A new account/context must not share a pending check from before sign-out.
 await sessionActions.current.run('session:'+context,async()=>{
 forgetState();
@@ -78,12 +79,13 @@ const s=await api('session');if(context!==refreshContext.current)return;
 setSessionError('');const companies=s.user?.companies||[];
 const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();
 const active=companies.find((c:any)=>c.id===saved)||companies[0];
-if(active)setCompany(active.id);setSession(s);
+if(active)setCompany(active.id);setSession(s);loaded=true;
 if(s.authenticated&&active)await refresh();else setLoading(false);
 if(context!==refreshContext.current)return;
 if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system');
 }catch(e:any){if(context===refreshContext.current){setSessionError(e.message);setError(e.message);setLoading(false)}}
 });
+return loaded&&context===refreshContext.current;
 },[refresh]);
 useEffect(()=>{loadSession()},[loadSession]);
 useEffect(()=>{const connected=()=>{setOnline(true);if(session?.authenticated)refresh()},disconnected=()=>setOnline(false),visible=()=>{if(!document.hidden&&navigator.onLine&&session?.authenticated)refresh()};window.addEventListener('online',connected);window.addEventListener('offline',disconnected);document.addEventListener('visibilitychange',visible);return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);document.removeEventListener('visibilitychange',visible)}},[session?.authenticated,refresh]);

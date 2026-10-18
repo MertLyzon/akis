@@ -10,5 +10,7 @@ type SaveSteps={
 export async function saveThenRefresh({save,saved,refresh,refreshFailed}:SaveSteps){
   await save();
   saved();
-  try{await refresh()}catch{refreshFailed()}
+  let result:unknown;
+  try{result=await refresh()}catch{refreshFailed();return}
+  if(result===false)refreshFailed();
 }
