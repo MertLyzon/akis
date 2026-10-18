@@ -1,5 +1,27 @@
 import {expect,test} from '@playwright/test';
 
+test('a stopped upload can be replaced without a late old response replacing the new media',async({page})=>{
+  let release!:()=>void,requests=0;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(/\/api\/media$/,async route=>{
+    requests++;
+    if(requests===1){await held;try{await route.fulfill({status:202,json:{id:'test-old-upload',filename:'old.png',mime_type:'image/png',status:'processing',url:null}})}catch{/* cancellation already aborted this request */}return}
+    return route.fulfill({status:202,json:{id:'test-new-upload',filename:'new.png',mime_type:'image/png',status:'processing',url:null}});
+  });
+  await page.goto('/');
+  const input=page.getByLabel('Medya dosyası seç',{exact:true});
+  await input.setInputFiles({name:'old.png',mimeType:'image/png',buffer:Buffer.from('test-only-old-image')});
+  await expect.poll(()=>requests).toBe(1);
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeDisabled();
+  await page.getByRole('button',{name:'Yüklemeyi durdur',exact:true}).click();
+  await expect(input).toBeEnabled();
+  await expect(page.getByText('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.',{exact:true})).toBeVisible();
+  await input.setInputFiles({name:'new.png',mimeType:'image/png',buffer:Buffer.from('test-only-new-image')});
+  await expect(page.locator('.asset-card')).toContainText('new.png');release();
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeEnabled();
+  await expect(page.locator('.asset-card')).not.toContainText('old.png');expect(requests).toBe(2);
+});
+
 test('a timed-out draft save keeps the editor and only an explicit retry resends its idempotency key',async({page})=>{
   await page.clock.install();
   let release!:()=>void;

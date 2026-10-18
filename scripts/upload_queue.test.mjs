@@ -60,6 +60,7 @@ test('network failure stops the remaining queue and permits a deliberate retry',
   assert.equal(h.requests.length,1);
   assert.equal(h.errors.length,1);
   assert.equal(h.errors[0].skipped,1);
+  assert.match(h.errors[0].message,/kütüphaneyi kontrol et/);
   assert.equal(h.queue.isBusy,false);
   assert.deepEqual(h.busy,[true,false]);
   h.queue.enqueue([a],context);
@@ -127,6 +128,7 @@ test('timeout stops the batch',()=>{
   h.requests[0].ontimeout();
   assert.equal(h.requests.length,1);
   assert.equal(h.errors.length,1);
+  assert.match(h.errors[0].message,/sunucuya ulaşmış olabilir/);
   assert.equal(h.queue.isBusy,false);
 });
 
@@ -190,4 +192,41 @@ test('an external abort clears the waiting queue',()=>{
   assert.equal(h.requests.length,1);
   assert.equal(h.queue.isBusy,false);
   assert.deepEqual(h.states.at(-1),{progress:null,queued:0});
+});
+
+test('a new upload started from the idle-state notification remains busy after cancellation',()=>{
+  let queue,armed=false,added=false;
+  const h=harness({onChange:state=>{if(armed&&!added&&state.progress===null){added=true;queue.enqueue([file('replacement.png')],context)}}});queue=h.queue;
+  queue.enqueue([file('old.png')],context);armed=true;queue.cancel();
+  assert.equal(h.requests.length,2);assert.equal(queue.isBusy,true);
+  assert.equal(h.requests[1].body.get('file').name,'replacement.png');
+  h.requests[1].respond(200,asset('replacement'));assert.equal(queue.isBusy,false);
+});
+
+test('a new upload started from the final idle notification is not unlocked by the old completion',()=>{
+  let queue,armed=false,added=false;
+  const h=harness({onChange:state=>{if(armed&&!added&&state.progress===null){added=true;queue.enqueue([file('next.png')],context)}}});queue=h.queue;
+  queue.enqueue([file('first.png')],context);armed=true;h.requests[0].respond(200,asset('first'));
+  assert.equal(h.requests.length,2);assert.equal(queue.isBusy,true);
+  h.requests[1].respond(200,asset('next'));assert.equal(queue.isBusy,false);
+});
+
+test('even a throwing abort releases the old upload and ignores its late response',()=>{
+  const h=harness();h.queue.enqueue([file('old.png'),file('queued.png')],context);
+  const old=h.requests[0],lateLoad=old.onload;old.abort=()=>{throw Error('transport closed')};
+  assert.doesNotThrow(()=>h.queue.cancel());assert.equal(h.queue.isBusy,false);
+  assert.deepEqual(h.states.at(-1),{progress:null,queued:0});
+  h.queue.enqueue([file('new.png')],context);
+  old.status=200;old.responseText=JSON.stringify(asset('old'));lateLoad();
+  assert.equal(h.saved.length,0);assert.equal(h.queue.isBusy,true);
+  h.requests[1].respond(200,asset('new'));assert.equal(h.queue.isBusy,false);
+});
+
+test('idle busy callbacks can start a replacement without receiving an obsolete empty state',()=>{
+  let queue,armed=false,added=false;
+  const h=harness({onBusy:value=>{if(armed&&!added&&!value){added=true;queue.enqueue([file('replacement.png')],context)}}});queue=h.queue;
+  queue.enqueue([file('old.png')],context);armed=true;queue.cancel();
+  assert.equal(queue.isBusy,true);assert.equal(h.requests.length,2);
+  assert.deepEqual(h.states.at(-1),{progress:0,queued:0});
+  h.requests[1].respond(200,asset('replacement'));assert.equal(queue.isBusy,false);
 });

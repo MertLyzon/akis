@@ -39,8 +39,9 @@ export class UploadQueue{
     this.generation++;
     this.pending=[];this.active=null;
     const request=this.detach();
-    request?.abort();
-    this.progress=null;this.publish();this.setBusy(false);
+    // Handlers are already detached: even a broken transport must release the UI.
+    try{request?.abort()}catch{}
+    this.progress=null;this.setBusy(false);this.publish();
   }
 
   private setBusy(value:boolean){if(this.busy!==value){this.busy=value;this.callbacks.onBusy(value)}}
@@ -67,7 +68,9 @@ export class UploadQueue{
   private next(){
     if(this.active)return;
     const item=this.pending.shift();
-    if(!item){this.progress=null;this.publish();this.setBusy(false);return}
+    // Observers may enqueue a new upload. Publish idle only after clearing busy,
+    // so the old completion cannot unlock a replacement started by a callback.
+    if(!item){this.progress=null;this.setBusy(false);this.publish();return}
     this.active=item;this.progress=0;this.setBusy(true);this.publish();
     if(this.active!==item)return;
     try{
@@ -76,8 +79,8 @@ export class UploadQueue{
       for(const [key,value] of Object.entries(item.context.headers))request.setRequestHeader(key,value);
       request.timeout=30*60*1000;
       request.upload.onprogress=event=>{if(this.active===item&&event.lengthComputable&&event.total>0){this.progress=Math.round(event.loaded/event.total*100);this.publish()}};
-      request.onerror=()=>this.fail(item,'Yükleme tamamlanamadı. Bağlantını kontrol et.',true);
-      request.ontimeout=()=>this.fail(item,'Dosya yükleme zaman aşımına uğradı.',true);
+      request.onerror=()=>this.fail(item,'Yükleme sonucu doğrulanamadı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.',true);
+      request.ontimeout=()=>this.fail(item,'Dosya yükleme zaman aşımına uğradı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.',true);
       request.onabort=()=>{if(this.active===item)this.cancel()};
       request.onload=()=>{
         if(this.active!==item)return;

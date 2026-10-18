@@ -32,7 +32,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
     input.current.value='';input.current.click();
   }
   function selected(event:ChangeEvent<HTMLInputElement>){enqueue(Array.from(event.currentTarget.files||[]))}
-  function stop(){uploader.current?.cancel();toast.info(t('Yükleme durduruldu. Tamamlanan dosyalar kütüphanede kalır.'))}
+  function stop(){uploader.current?.cancel();toast.info(t('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.'))}
 
   return <div className="media-uploader" aria-busy={progress!==null} onDragOver={event=>{event.preventDefault();if(!disabled)setDrag(true)}} onDragLeave={()=>setDrag(false)} onDrop={event=>{event.preventDefault();setDrag(false);if(!asset)enqueue(Array.from(event.dataTransfer.files))}}>
     <input ref={input} className="sr-only" tabIndex={-1} type="file" accept={acceptedMedia} multiple={multiple} disabled={disabled||progress!==null} aria-label={t('Medya dosyası seç')} onChange={selected}/>
