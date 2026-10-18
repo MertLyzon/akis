@@ -26,7 +26,7 @@ async function act(id:string,path:string,body:any,done:string,method?:string){
 if(inFlight.current.has(id))return false;
 inFlight.current.add(id);reportPending(true);setActive(new Set(inFlight.current));
 const refreshFailed=()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))};
-try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)await refresh()},refreshFailed});return true}
+try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)return await refresh()},refreshFailed});return true}
 catch(e:any){if(mounted.current){toast.error(t(e.message));if(confirmation?.post.id===id){setConfirmationError(e.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
 finally{inFlight.current.delete(id);if(mounted.current){reportPending(inFlight.current.size>0);setActive(new Set(inFlight.current))}}
 }

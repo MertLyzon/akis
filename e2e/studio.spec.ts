@@ -763,6 +763,38 @@ test('connection edits survive background updates and conflicting actions are lo
   await expect(modal).toBeHidden();expect(deletes).toBe(1);expect(requests).toBe(2);
 });
 
+test('settings save waits for a fresh read behind a background poll and warns without resending secrets',async({page})=>{
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  const snapshot=await (await page.request.get('/api/state')).json();
+  let reads=0,writes=0,releasePoll!:()=>void,releaseFresh!:()=>void;
+  const poll=new Promise<void>(resolve=>{releasePoll=resolve}),fresh=new Promise<void>(resolve=>{releaseFresh=resolve});
+  await page.route('**/api/state',async route=>{
+    reads++;
+    if(reads===1){await poll;return route.fulfill({json:snapshot})}
+    await fresh;return route.fulfill({status:503,json:{error:'Fresh state unavailable'}});
+  });
+  await page.route('**/api/settings/oauth',route=>{writes++;return route.fulfill({json:{ok:true}})});
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect.poll(()=>reads).toBe(1);
+  await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Uygulama ayarları',exact:true});
+  await form.getByLabel('Uygulama / Client ID',{exact:true}).fill('test-client');
+  await form.getByLabel('Uygulama gizli anahtarı',{exact:true}).fill('test-only-secret');
+  await form.getByLabel('Dönüş adresi',{exact:true}).fill('https://example.com/api/oauth/x/callback');
+  await form.getByRole('button',{name:'Ayarları kaydet',exact:true}).click();
+  await expect.poll(()=>writes).toBe(1);
+  await expect(form.getByLabel('Uygulama gizli anahtarı',{exact:true})).toHaveValue('');
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeDisabled();
+  releasePoll();await expect.poll(()=>reads).toBe(2);
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeDisabled();
+  releaseFresh();
+  await expect(page.getByText('Ayarlar kaydedildi ancak güncel durum alınamadı. Listeyi yenileyebilirsin.',{exact:true})).toBeVisible();
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeEnabled();
+  await expect(form.getByRole('alert')).toHaveCount(0);
+  expect(writes).toBe(1);expect(reads).toBe(2);
+});
+
 test('platform settings lock repeated saves and preserve the secret after failure',async({page})=>{
   let requests=0;
   let release!:()=>void;

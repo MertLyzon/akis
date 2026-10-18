@@ -42,7 +42,7 @@ catch(e:any){if(mounted.current){setError(e.message);toast.error(t(e.message))}r
 function commit(write:()=>Promise<unknown>,message:string,done?:()=>void){return guarded(()=>saveThenRefresh({
 save:write,
 saved:()=>{if(mounted.current){done?.();toast.success(t(message))}},
-refresh:async()=>{if(mounted.current)await latestRefresh.current()},
+refresh:async()=>{if(mounted.current)return await latestRefresh.current()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak bağlantı durumu yenilenemedi. Listeyi tekrar yenile.'))},
 }))}
 function connect(){

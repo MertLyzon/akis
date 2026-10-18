@@ -18,6 +18,7 @@ import CommandMenu from './studio/CommandMenu';
 import {NavigationSafety,NavigationStatus} from './studio/navigationSafety';
 import {NavigationContext} from './studio/useNavigationSafety';
 import {KeyedActions} from './studio/libraryRequests';
+import {WorkspaceRefresh} from './studio/workspaceRefresh';
 const Posts=lazy(()=>import('./studio/Posts'));
 const Calendar=lazy(()=>import('./studio/Calendar'));
 const Library=lazy(()=>import('./studio/Library'));
@@ -54,10 +55,10 @@ const editingVersion=useRef<number|null>(null);
 const request=useRef({fingerprint:'',id:''});
 const saveInFlight=useRef(false);
 const restoredDraftKey=useRef('');
-const refreshInFlight=useRef(false);
+const workspaceRefresh=useRef(new WorkspaceRefresh());
 const sessionActions=useRef(new KeyedActions());
 const [sessionError,setSessionError]=useState('');
-const refreshQueued=useRef(false),refreshContext=useRef(0);
+const refreshContext=useRef(0);
 const [invite,setInvite]=useState(inviteToken);
 useEffect(()=>{
 if(!hasUnsavedChanges&&!busy&&!uploading&&!navigationStatus.pending&&!navigationStatus.sensitive&&!navigationStatus.dirty)return;
@@ -65,7 +66,19 @@ const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=
 window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
 },[hasUnsavedChanges,busy,uploading,navigationStatus.pending,navigationStatus.sensitive,navigationStatus.dirty]);
 useEffect(()=>{const on=()=>setInvite(inviteToken());window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on)},[]);
-const refresh=useCallback(async()=>{if(sessionActions.current.has('logout'))return;if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);if(context===refreshContext.current)setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
+const refresh=useCallback(async()=>{
+if(sessionActions.current.has('logout'))return false;
+const context=refreshContext.current;setRefreshing(true);
+const result=await workspaceRefresh.current.run(async()=>{
+if(context!==refreshContext.current||sessionActions.current.has('logout'))return false;
+try{
+const j=await fetchState();if(context!==refreshContext.current)return false;
+if(j)setState(j);setError('');setLastSynced(Date.now());return true;
+}catch(e:any){if(context===refreshContext.current)setError(e.message);return false}
+});
+if(!workspaceRefresh.current.busy){setRefreshing(false);if(context===refreshContext.current)setLoading(false)}
+return result&&context===refreshContext.current;
+},[]);
 const loadSession=useCallback(async()=>{
 if(sessionActions.current.has('logout'))return false;
 const context=refreshContext.current;
@@ -80,7 +93,7 @@ setSessionError('');const companies=s.user?.companies||[];
 const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();
 const active=companies.find((c:any)=>c.id===saved)||companies[0];
 if(active)setCompany(active.id);setSession(s);loaded=true;
-if(s.authenticated&&active)await refresh();else setLoading(false);
+if(s.authenticated&&active)loaded=await refresh();else setLoading(false);
 if(context!==refreshContext.current)return;
 if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system');
 }catch(e:any){if(context===refreshContext.current){setSessionError(e.message);setError(e.message);setLoading(false)}}
@@ -129,7 +142,7 @@ if(request.current.fingerprint!==fingerprint)request.current={fingerprint,id:cry
 const r=editing?await api('posts/'+editing,{...body,expected_updated_at:editingVersion.current},'PUT'):await api('posts',{...body,requestId:request.current.id});
 const outcome=r.outcome||(send?'approved':'draft');
 toast.success(t(outcome==='submitted'?'Onaya gönderildi. Yetkili onayladığında yayımlanacak.':outcome==='approved'?(schedule?'Planlandı. Belirlenen zamanda gönderilecek.':'Gönderim kuyruğuna eklendi. Akış arka planda devam ediyor.'):'Taslak kaydedildi.'));
-reset(false,true);await refresh();setPostFilter(outcome==='submitted'?'pending_approval':outcome==='approved'&&schedule?'scheduled':'all');setView('posts');
+reset(false,true);if(!await refresh())toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'));setPostFilter(outcome==='submitted'?'pending_approval':outcome==='approved'&&schedule?'scheduled':'all');setView('posts');
 }catch(e:any){toast.error(t(e.message));if(editing&&e.status===409){setEditConflict(true);await refresh()}}finally{saveInFlight.current=false;setBusy(false)}
 }
 function openDraft(p:any,copy=false,confirmed=false){

@@ -28,7 +28,7 @@ reportPending(true);setBusy(true);setError('');
 try{await saveThenRefresh({
 save:()=>api('settings/oauth',payload),
 saved:()=>{if(mounted.current){const stored={client:payload.client_id,redirect:payload.redirect_uri,mode:payload.mode};incoming.current=stored;setBaseline(stored);setSecret('');setAccepted(true);if(payload.client_secret)setHasSecret(true);toast.success(t('Uygulama ayarları kaydedildi.'))}},
-refresh:async()=>{if(mounted.current)await refresh()},
+refresh:async()=>{if(mounted.current)return await refresh()},
 refreshFailed:()=>{if(mounted.current)toast.warning(t('Ayarlar kaydedildi ancak güncel durum alınamadı. Listeyi yenileyebilirsin.'))},
 })}finally{if(mounted.current){reportPending(false);setBusy(false)}}
 })}catch(e:any){if(mounted.current){setError(e.message);toast.error(t(e.message))}}

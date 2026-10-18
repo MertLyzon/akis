@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
 import {libraryDraft,libraryDraftChanged} from '../app/studio/libraryDraft.ts';
+import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
 test('library editor captures its own label values without retaining the asset object',()=>{
   const asset={folder:'Original',tags:['one','two']},draft=libraryDraft(asset);
@@ -33,6 +34,50 @@ test('the navigation action count stays positive until all independent mutations
 });
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
+
+test('workspace refresh merges pending reads but every caller waits for the fresh pass',async()=>{
+  const queue=new WorkspaceRefresh(),old=deferred(),fresh=deferred();let calls=0,completed=0;
+  const first=queue.run(()=>{calls++;return old.promise});
+  const second=queue.run(async()=>{throw Error('superseded callback must not run')}).then(result=>{completed++;return result});
+  const third=queue.run(()=>{calls++;return fresh.promise}).then(result=>{completed++;return result});
+  assert.equal(calls,1);assert.equal(queue.busy,true);
+  old.resolve(true);assert.equal(await first,true);
+  assert.equal(calls,2);assert.equal(completed,0);assert.equal(queue.busy,true);
+  fresh.resolve(false);assert.equal(await second,false);assert.equal(await third,false);
+  assert.equal(completed,2);assert.equal(calls,2);assert.equal(queue.busy,false);
+});
+test('a failed background read still runs an explicitly requested follow-up',async()=>{
+  const queue=new WorkspaceRefresh(),old=deferred();let calls=0;
+  const first=queue.run(()=>old.promise),second=queue.run(async()=>{calls++;return true});
+  old.reject(Error('offline'));assert.equal(await first,false);assert.equal(await second,true);
+  assert.equal(calls,1);assert.equal(queue.busy,false);
+});
+test('failed workspace reads never schedule an automatic retry',async()=>{
+  const queue=new WorkspaceRefresh();let calls=0;
+  assert.equal(await queue.run(()=>{calls++;throw Error('offline')}),false);
+  await Promise.resolve();assert.equal(calls,1);assert.equal(queue.busy,false);
+  assert.equal(await queue.run(async()=>{calls++;return true}),true);assert.equal(calls,2);
+});
+test('a read requested during the follow-up waits for the next fresh pass',async()=>{
+  const queue=new WorkspaceRefresh(),a=deferred(),b=deferred(),c=deferred();let calls=0;
+  const first=queue.run(()=>{calls++;return a.promise}),second=queue.run(()=>{calls++;return b.promise});
+  a.resolve(true);await first;
+  const third=queue.run(()=>{calls++;return c.promise});assert.equal(calls,2);
+  b.resolve(true);assert.equal(await second,true);assert.equal(calls,3);assert.equal(queue.busy,true);
+  c.resolve(true);assert.equal(await third,true);assert.equal(queue.busy,false);
+});
+test('completion callbacks can request a new read without losing its busy state',async()=>{
+  const queue=new WorkspaceRefresh(),next=deferred();let replacement;
+  await queue.run(async()=>true).then(()=>{replacement=queue.run(()=>next.promise)});
+  assert.equal(queue.busy,true);next.resolve(true);assert.equal(await replacement,true);assert.equal(queue.busy,false);
+});
+test('a newer workspace context replaces an obsolete queued callback',async()=>{
+  const queue=new WorkspaceRefresh(),old=deferred(),seen=[];let context='old';
+  const read=()=>{const captured=context;return queue.run(async()=>{if(captured!==context)return false;seen.push(captured);return true}).then(result=>result&&captured===context)};
+  const running=queue.run(()=>old.promise),obsolete=read();context='new';const current=read();
+  old.resolve(false);await running;
+  assert.equal(await obsolete,false);assert.equal(await current,true);assert.deepEqual(seen,['new']);
+});
 
 test('same media cannot be mutated twice before a render',async()=>{
   const actions=new KeyedActions(),wait=deferred();let calls=0;
