@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {saveThenRefresh} from '../app/studio/settingsSave.ts';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
+import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 function steps(overrides={}){
@@ -78,6 +79,19 @@ test('save stays locked while its status refresh is pending',async()=>{
   await Promise.resolve();assert.deepEqual(h.events,['save','saved']);
   assert.equal(await actions.run('save',()=>saveThenRefresh(h.callbacks)),false);
   refresh.resolve();await first;assert.equal(actions.has('save'),false);
+});
+
+test('a committed save stays locked through a queued refresh and warns if that fresh read fails',async()=>{
+  const queue=new WorkspaceRefresh(),actions=new KeyedActions(),background=deferred(),fresh=deferred();
+  const poll=queue.run(()=>background.promise);
+  const h=steps({refresh:()=>queue.run(()=>fresh.promise)});
+  const saving=actions.run('save',()=>saveThenRefresh(h.callbacks));
+  await Promise.resolve();await Promise.resolve();
+  background.resolve(true);await poll;
+  assert.equal(actions.has('save'),true);assert.deepEqual(h.events,['save','saved']);
+  assert.equal(await actions.run('save',async()=>{throw Error('duplicate save')}),false);
+  fresh.resolve(false);await saving;
+  assert.deepEqual(h.events,['save','saved','refresh-failed']);assert.equal(actions.has('save'),false);
 });
 
 test('a failed save unlocks the same form for a deliberate retry',async()=>{
