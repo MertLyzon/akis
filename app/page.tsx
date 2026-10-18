@@ -17,6 +17,7 @@ import LanguageQuick from './studio/LanguageQuick';
 import CommandMenu from './studio/CommandMenu';
 import {NavigationSafety,NavigationStatus} from './studio/navigationSafety';
 import {NavigationContext} from './studio/useNavigationSafety';
+import {KeyedActions} from './studio/libraryRequests';
 const Posts=lazy(()=>import('./studio/Posts'));
 const Calendar=lazy(()=>import('./studio/Calendar'));
 const Library=lazy(()=>import('./studio/Library'));
@@ -54,6 +55,8 @@ const request=useRef({fingerprint:'',id:''});
 const saveInFlight=useRef(false);
 const restoredDraftKey=useRef('');
 const refreshInFlight=useRef(false);
+const sessionActions=useRef(new KeyedActions());
+const [sessionError,setSessionError]=useState('');
 const refreshQueued=useRef(false),refreshContext=useRef(0);
 const [invite,setInvite]=useState(inviteToken);
 useEffect(()=>{
@@ -63,7 +66,7 @@ window.addEventListener('beforeunload',warn);return()=>window.removeEventListene
 },[hasUnsavedChanges,busy,uploading,navigationStatus.pending,navigationStatus.sensitive,navigationStatus.dirty]);
 useEffect(()=>{const on=()=>setInvite(inviteToken());window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on)},[]);
 const refresh=useCallback(async()=>{if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
-const loadSession=useCallback(async()=>{forgetState();if(isApp&&!serverUrl()){setSession({authenticated:false});setLoading(false);return}try{const s=await api('session');const companies=s.user?.companies||[];const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();const active=companies.find((c:any)=>c.id===saved)||companies[0];if(active)setCompany(active.id);setSession(s);if(s.authenticated&&active)await refresh();else setLoading(false);if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system')}catch(e:any){setError(e.message);setLoading(false)}},[refresh]);
+const loadSession=useCallback(async()=>{await sessionActions.current.run('session',async()=>{forgetState();if(isApp&&!serverUrl()){setSessionError('');setSession({authenticated:false});setLoading(false);return}try{const s=await api('session');setSessionError('');const companies=s.user?.companies||[];const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();const active=companies.find((c:any)=>c.id===saved)||companies[0];if(active)setCompany(active.id);setSession(s);if(s.authenticated&&active)await refresh();else setLoading(false);if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system')}catch(e:any){setSessionError(e.message);setError(e.message);setLoading(false)}})},[refresh]);
 useEffect(()=>{loadSession()},[loadSession]);
 useEffect(()=>{const connected=()=>{setOnline(true);if(session?.authenticated)refresh()},disconnected=()=>setOnline(false),visible=()=>{if(!document.hidden&&navigator.onLine&&session?.authenticated)refresh()};window.addEventListener('online',connected);window.addEventListener('offline',disconnected);document.addEventListener('visibilitychange',visible);return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);document.removeEventListener('visibilitychange',visible)}},[session?.authenticated,refresh]);
 const pollInterval=statePollInterval(state);
@@ -123,7 +126,7 @@ function pickAsset(a:any){if(saveInFlight.current)return;setUploaded(a);setAsset
 async function switchCompany(id:string,confirmed=false){if(!confirmed){replaceEditor(()=>{void switchCompany(id,true)});return}refreshContext.current++;forgetState();setCompany(id);setLoading(true);setState(empty);reset(true);setView('compose');await refresh()}
 async function logout(confirmed=false){if(!confirmed){replaceEditor(()=>{void logout(true)});return}refreshContext.current++;await api('logout',{}).catch(()=>{});forgetState();try{Object.keys(localStorage).filter(k=>k.startsWith('akis-draft:')).forEach(k=>localStorage.removeItem(k))}catch{};reset(false,true);setToken('');setSession({authenticated:false});setState(empty);setLoading(false)}
 if(invite)return <><Invite key={invite} token={invite} onDone={()=>{setInvite('');forgetState();setState(empty);setLoading(true);loadSession()}}/><div className="login-theme"><ThemeSwitch/><LanguageQuick className="login-language" language={uiLanguage} onChange={changeLanguage}/></div><Toaster richColors position="bottom-right"/></>;
-if(!session?.authenticated)return <><Login loading={loading} onDone={()=>{setLoading(true);loadSession()}}/><div className="login-theme"><ThemeSwitch/><LanguageQuick className="login-language" language={uiLanguage} onChange={changeLanguage}/></div><div className="login-install"><InstallHint/></div><Toaster richColors position="bottom-right"/></>;
+if(!session?.authenticated)return <><Login loading={loading} sessionError={sessionError} onRetry={()=>{setLoading(true);loadSession()}} onChangeServer={()=>setSessionError('')} onDone={()=>{setLoading(true);loadSession()}}/><div className="login-theme"><ThemeSwitch/><LanguageQuick className="login-language" language={uiLanguage} onChange={changeLanguage}/></div><div className="login-install"><InstallHint/></div><Toaster richColors position="bottom-right"/></>;
 const user=session.user,companies=user.companies||[],current=companies.find((c:any)=>c.id===state.company?.id);
 const pending=state.posts.filter((p:any)=>p.status==='pending_approval').length;
 document.title=(pending&&can('approve')?`(${pending}) `:'')+'Akış — '+t('Sosyal medya stüdyosu');

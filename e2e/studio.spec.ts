@@ -458,6 +458,48 @@ test('system administration preserves failed forms and never starts backups auto
   expect(creates).toBe(2);expect(toggles).toBe(1);expect(backups).toBe(0);
 });
 
+test('startup session failure offers a single-flight read-only retry',async({page})=>{
+  let checks=0,logins=0;
+  let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/login',route=>{logins++;return route.fulfill({json:{ok:true}})});
+  await page.route('**/api/session',async route=>{
+    checks++;
+    if(checks===1)return route.fulfill({status:503,json:{error:'Session temporarily unavailable'}});
+    await held;return route.fulfill({json:{authenticated:false,user:null}});
+  });
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText('Session temporarily unavailable');
+  await expect(page.getByLabel('Parola',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Oturumu yeniden kontrol et',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>checks).toBe(2);
+  await expect(page.getByRole('heading',{name:'Stüdyon açılıyor…',exact:true})).toBeVisible();
+  release();await expect(page.getByLabel('Parola',{exact:true})).toBeVisible();
+  expect(checks).toBe(2);expect(logins).toBe(0);
+});
+
+test('a successful login is not resubmitted when the following session check fails',async({page})=>{
+  await page.goto('/');
+  const session=await (await page.request.get('/api/session')).json();
+  let checks=0,logins=0;
+  await page.route('**/api/session',route=>{
+    checks++;
+    if(checks===1)return route.fulfill({json:{authenticated:false,user:null}});
+    if(checks===2)return route.fulfill({status:503,json:{error:'Session check interrupted'}});
+    return route.fulfill({json:session});
+  });
+  await page.route('**/api/login',route=>{logins++;return route.fulfill({json:{ok:true}})});
+  await page.reload();
+  await page.getByLabel('E-posta',{exact:true}).fill('login-test@example.com');
+  await page.getByLabel('Parola',{exact:true}).fill('test-only-password');
+  await page.getByRole('button',{name:'Giriş yap',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Session check interrupted');
+  await expect(page.getByLabel('Parola',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Oturumu yeniden kontrol et',exact:true}).click();
+  await expect(page.locator('#content')).toBeVisible();
+  expect(logins).toBe(1);expect(checks).toBe(3);
+});
+
 test('login preserves credentials after failure and locks the two-factor step',async({page})=>{
   await page.goto('/');
   const session=await (await page.request.get('/api/session')).json();
