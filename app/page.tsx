@@ -65,8 +65,26 @@ const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue=
 window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);
 },[hasUnsavedChanges,busy,uploading,navigationStatus.pending,navigationStatus.sensitive,navigationStatus.dirty]);
 useEffect(()=>{const on=()=>setInvite(inviteToken());window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on)},[]);
-const refresh=useCallback(async()=>{if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
-const loadSession=useCallback(async()=>{await sessionActions.current.run('session',async()=>{forgetState();if(isApp&&!serverUrl()){setSessionError('');setSession({authenticated:false});setLoading(false);return}try{const s=await api('session');setSessionError('');const companies=s.user?.companies||[];const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();const active=companies.find((c:any)=>c.id===saved)||companies[0];if(active)setCompany(active.id);setSession(s);if(s.authenticated&&active)await refresh();else setLoading(false);if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system')}catch(e:any){setSessionError(e.message);setError(e.message);setLoading(false)}})},[refresh]);
+const refresh=useCallback(async()=>{if(sessionActions.current.has('logout'))return;if(refreshInFlight.current){refreshQueued.current=true;return}const context=refreshContext.current;refreshInFlight.current=true;setRefreshing(true);try{const j=await fetchState();if(context===refreshContext.current){if(j)setState(j);setError('');setLastSynced(Date.now())}}catch(e:any){if(context===refreshContext.current)setError(e.message)}finally{refreshInFlight.current=false;setRefreshing(false);if(context===refreshContext.current)setLoading(false);if(refreshQueued.current){refreshQueued.current=false;queueMicrotask(refresh)}}},[]);
+const loadSession=useCallback(async()=>{
+if(sessionActions.current.has('logout'))return;
+const context=refreshContext.current;
+// A new account/context must not share a pending check from before sign-out.
+await sessionActions.current.run('session:'+context,async()=>{
+forgetState();
+if(isApp&&!serverUrl()){setSessionError('');setSession({authenticated:false});setLoading(false);return}
+try{
+const s=await api('session');if(context!==refreshContext.current)return;
+setSessionError('');const companies=s.user?.companies||[];
+const saved=(()=>{try{return localStorage.getItem('akis-company')}catch{return null}})();
+const active=companies.find((c:any)=>c.id===saved)||companies[0];
+if(active)setCompany(active.id);setSession(s);
+if(s.authenticated&&active)await refresh();else setLoading(false);
+if(context!==refreshContext.current)return;
+if(s.user?.must_change_password)setView('account');else if(s.authenticated&&!active&&s.user?.is_system_admin)setView('system');
+}catch(e:any){if(context===refreshContext.current){setSessionError(e.message);setError(e.message);setLoading(false)}}
+});
+},[refresh]);
 useEffect(()=>{loadSession()},[loadSession]);
 useEffect(()=>{const connected=()=>{setOnline(true);if(session?.authenticated)refresh()},disconnected=()=>setOnline(false),visible=()=>{if(!document.hidden&&navigator.onLine&&session?.authenticated)refresh()};window.addEventListener('online',connected);window.addEventListener('offline',disconnected);document.addEventListener('visibilitychange',visible);return()=>{window.removeEventListener('online',connected);window.removeEventListener('offline',disconnected);document.removeEventListener('visibilitychange',visible)}},[session?.authenticated,refresh]);
 const pollInterval=statePollInterval(state);
@@ -100,7 +118,7 @@ function reset(keepStored=false,afterSave=false){if(saveInFlight.current&&!after
 function startContent(local='',media?:any,confirmed=false){if(!confirmed){replaceEditor(()=>startContent(local,media,true));return}reset();setSchedule(local);if(media){setUploaded(media);setAssetId(media.id)}setView('compose')}
 function discardEditing(){replaceEditor(()=>reset())}
 async function save(send:boolean){
-if(saveInFlight.current||uploading||editConflict)return;
+if(saveInFlight.current||uploading||editConflict||sessionActions.current.has('logout'))return;
 saveInFlight.current=true;setBusy(true);
 try{
 const body={...contentBody,send};
@@ -124,7 +142,20 @@ function duplicate(p:any){openDraft(p,true)}
 function composeAt(local:string){startContent(local)}
 function pickAsset(a:any){if(saveInFlight.current)return;setUploaded(a);setAssetId(a.id);setPicking(false);setView('compose')}
 async function switchCompany(id:string,confirmed=false){if(!confirmed){replaceEditor(()=>{void switchCompany(id,true)});return}refreshContext.current++;forgetState();setCompany(id);setLoading(true);setState(empty);reset(true);setView('compose');await refresh()}
-async function logout(confirmed=false){if(!confirmed){replaceEditor(()=>{void logout(true)});return}refreshContext.current++;await api('logout',{}).catch(()=>{});forgetState();try{Object.keys(localStorage).filter(k=>k.startsWith('akis-draft:')).forEach(k=>localStorage.removeItem(k))}catch{};reset(false,true);setToken('');setSession({authenticated:false});setState(empty);setLoading(false)}
+async function logout(confirmed=false){
+if(sessionActions.current.has('logout'))return;
+if(!confirmed){replaceEditor(()=>{void logout(true)});return}
+await sessionActions.current.run('logout',async()=>{
+reportNavigation('logout',{pending:true,sensitive:false});refreshContext.current++;
+try{
+await api('logout',{});
+refreshContext.current++;forgetState();
+try{Object.keys(localStorage).filter(k=>k.startsWith('akis-draft:')).forEach(k=>localStorage.removeItem(k))}catch{}
+reset(false,true);setToken('');setSessionError('');setError('');setSession({authenticated:false});setState(empty);setLoading(false);
+}catch{toast.error(t('Çıkış doğrulanamadı. Sunucudaki oturumun açık kalmış olabilir. Bağlantını kontrol edip çıkışı tekrar dene.'))}
+finally{reportNavigation('logout',{pending:false,sensitive:false})}
+});
+}
 if(invite)return <><Invite key={invite} token={invite} onDone={()=>{setInvite('');forgetState();setState(empty);setLoading(true);loadSession()}}/><div className="login-theme"><ThemeSwitch/><LanguageQuick className="login-language" language={uiLanguage} onChange={changeLanguage}/></div><Toaster richColors position="bottom-right"/></>;
 if(!session?.authenticated)return <><Login loading={loading} sessionError={sessionError} onRetry={()=>{setLoading(true);loadSession()}} onChangeServer={()=>setSessionError('')} onDone={()=>{setLoading(true);loadSession()}}/><div className="login-theme"><ThemeSwitch/><LanguageQuick className="login-language" language={uiLanguage} onChange={changeLanguage}/></div><div className="login-install"><InstallHint/></div><Toaster richColors position="bottom-right"/></>;
 const user=session.user,companies=user.companies||[],current=companies.find((c:any)=>c.id===state.company?.id);
@@ -164,7 +195,7 @@ return <NavigationContext value={reportNavigation}><SidebarProvider><Sidebar cla
 <SidebarInset><header className="topbar"><div><SidebarTrigger/><span>{state.company?.name||'Akış'}</span><span className="slash">/</span><strong>{allNav.find(n=>n.id===view)?.name}</strong></div><div className="topbar-meta"><button className="command-trigger" type="button" disabled={navigationLocked} onClick={()=>setCommandOpen(true)} aria-label={t("Akış'ta ara")}><Search size={14}/><span>{t("Akış'ta ara")}</span><kbd>{navigator.platform.includes('Mac')?'⌘':'Ctrl'} K</kbd></button><LanguageQuick language={uiLanguage} onChange={changeLanguage}/><span className={'sync-status '+(!online||error?'sync-error':'')} role="status" aria-live="polite" title={lastSynced?`${t('Son güncelleme')}: ${new Date(lastSynced).toLocaleTimeString(uiLanguage==='en'?'en-US':'tr-TR')}`:t('Henüz güncellenmedi')}><RefreshCw className={refreshing?'spin':''} size={13}/>{t(!online?'Çevrimdışı':refreshing?'Güncelleniyor':error?'Bağlantı sorunu':'Güncel')}</span><span>{state.connections.length}/4 {t('platform bağlı')} · {tz}</span></div></header><main className="main"><InstallHint/><div className="page-heading"><div><div className="eyebrow">{t('SOSYAL MEDYA STÜDYOSU')}</div><h1>{headings[view]?.[0]}</h1><p>{headings[view]?.[1]}</p></div>{!['compose','system','account'].includes(view)&&can('compose')&&<button className="primary" disabled={navigationLocked} onClick={()=>startContent()}><Plus size={18}/>{t('Yeni içerik')}</button>}</div>
 {error&&view!=='system'&&view!=='account'&&<div className="error" role="alert">{t(error)} <button onClick={refresh}>{t('Tekrar dene')}</button></div>}{expiring.length>0&&can('connections')&&view!=='connections'&&<div className="expiry expiry-warn"><RefreshCw size={17}/><span>{expiring.length} {t('bağlantının süresi veya yenilemesi dikkat gerektiriyor.')}</span><button className="inline-link" disabled={navigationLocked} onClick={()=>goView('connections')}>{t('Bağlantıları incele')}</button></div>}
 {pending>0&&can('approve')&&view!=='posts'&&view!=='compose'&&<div className="expiry"><Check size={17}/><span>{pending} {t('içerik onayını bekliyor.')}</span><button className="inline-link" disabled={navigationLocked} onClick={()=>goView('posts','pending_approval')}>{t('Onay listesini aç')}</button></div>}
-<Suspense fallback={<div className="panel empty-state"><Loader2 className="spin"/><span>{t('Ekran hazırlanıyor…')}</span></div>}>
+<div style={{display:'contents'}} inert={sessionActions.current.has('logout')}><Suspense fallback={<div className="panel empty-state"><Loader2 className="spin"/><span>{t('Ekran hazırlanıyor…')}</span></div>}>
 <AlertDialog open={!!pendingEditorAction} onOpenChange={open=>{if(!open)setPendingEditorAction(null)}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{t(pendingEditorAction?.sensitive?'Tek seferlik bilgiler açık':'Kaydedilmemiş değişiklikler')}</AlertDialogTitle><AlertDialogDescription>{pendingEditorAction?.sensitive&&t('Bu ekranda tek sefer gösterilen bilgiler var. Ayrılırsan yeniden görüntülenemeyebilir. Güvenli şekilde aldığından emin misin?')}{pendingEditorAction?.editor&&' '+t('Kaydedilmemiş değişikliklerin var. Bu değişiklikleri bırakıp devam etmek istiyor musun?')}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>{t(pendingEditorAction?.sensitive?'Bu ekranda kal':'Düzenlemeye devam et')}</AlertDialogCancel><AlertDialogAction disabled={navigationLocked} onClick={event=>{event.preventDefault();if(saveInFlight.current||uploading||navigation.current.snapshot().pending){toast.info(t('İşlem tamamlanana kadar bu ekranda kal.'));return}const action=pendingEditorAction;setPendingEditorAction(null);action?.action()}}>{t(pendingEditorAction?.sensitive?'Bilgileri kapat ve devam et':'Değişiklikleri bırak')}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 {view==='compose'&&editing&&editConflict&&<div className="error" role="alert"><p>{t('Bu içerik başka bir sekmede veya kullanıcı tarafından güncellendi. Yazdığın metin korunuyor. Güncel sürümü Gönderiler ekranından açıp değişikliklerini karşılaştır.')}</p><button className="secondary" onClick={()=>setView('posts')}>{t('Gönderileri incele')}</button></div>}
 {view==='compose'&&!editing&&text.trim()&&<div className={'autosave-bar '+(draftSaved?'saved':'')} role="status"><Check size={13}/>{t(draftSaved?'Taslak bu cihazda saklandı':'Taslak kaydediliyor…')}</div>}
@@ -180,5 +211,5 @@ return <NavigationContext value={reportNavigation}><SidebarProvider><Sidebar cla
 {view==='team'&&can('members')&&<Team tz={tz} can={can} me={user} refreshState={refresh} onNavigationState={teamNavigation}/>}
 {view==='system'&&user.is_system_admin&&<System settings={state.settings} refreshState={loadSession} onNavigationState={systemNavigation}/>}
 {view==='account'&&<Account me={user} refreshSession={loadSession} onNavigationState={accountNavigation}/>}
-</Suspense>
+</Suspense></div>
 <footer className="page-footer"><span>akış.</span><span>{t('Daha az sekme. Daha çok üretim.')}</span></footer></main><CommandMenu open={commandOpen} items={commandItems} onClose={()=>setCommandOpen(false)}/></SidebarInset><Toaster richColors position="bottom-right"/></SidebarProvider></NavigationContext>}

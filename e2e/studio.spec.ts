@@ -458,6 +458,45 @@ test('system administration preserves failed forms and never starts backups auto
   expect(creates).toBe(2);expect(toggles).toBe(1);expect(backups).toBe(0);
 });
 
+test('failed sign-out preserves the draft and only an explicit retry sends another request',async({page})=>{
+  let requests=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/logout',async route=>{
+    requests++;
+    if(requests===1){await held;return route.fulfill({status:503,json:{error:'Sign-out unavailable'}})}
+    return route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/');await page.locator('#content').fill('Keep this draft if sign-out fails');
+  const exit=page.getByRole('button',{name:'Çıkış yap',exact:true});
+  await exit.click();
+  await page.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect.poll(()=>requests).toBe(1);await expect(exit).toBeDisabled();
+  await expect(page.locator('#content').locator('xpath=ancestor::div[@inert]')).toHaveCount(1);
+  release();
+  await expect(page.getByText('Çıkış doğrulanamadı. Sunucudaki oturumun açık kalmış olabilir. Bağlantını kontrol edip çıkışı tekrar dene.',{exact:true})).toBeVisible();
+  await expect(exit).toBeEnabled();await expect(page.locator('#content')).toHaveValue('Keep this draft if sign-out fails');
+  expect(requests).toBe(1);
+  await exit.click();await page.getByRole('button',{name:'Değişiklikleri bırak',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket hesabına giriş',exact:true})).toBeVisible();
+  expect(requests).toBe(2);
+  expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('akis-draft:')))).toEqual([]);
+});
+
+test('a delayed workspace poll cannot change the screen after sign-out',async({page})=>{
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  let started=false,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/state',async route=>{started=true;await held;return route.fulfill({status:503,json:{error:'Old workspace failure'}})});
+  await page.route('**/api/logout',route=>route.fulfill({json:{ok:true}}));
+  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+  await expect.poll(()=>started).toBe(true);
+  await page.getByRole('button',{name:'Çıkış yap',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Şirket hesabına giriş',exact:true})).toBeVisible();
+  release();
+  await expect(page.getByRole('form',{name:'Şirket hesabına giriş',exact:true})).toBeVisible();
+  await expect(page.getByText('Old workspace failure',{exact:true})).toHaveCount(0);
+});
+
 test('startup session failure offers a single-flight read-only retry',async({page})=>{
   let checks=0,logins=0;
   let release!:()=>void;
