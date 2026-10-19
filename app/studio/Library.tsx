@@ -7,12 +7,14 @@ import MediaUpload from './MediaUpload';
 import {t} from './i18n';
 import {KeyedActions,LatestRequest} from './libraryRequests';
 import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFooter} from '@/components/ui/dialog';
-import {LibraryDraft,libraryDraft,libraryDraftChanged} from './libraryDraft';
+import {LibraryDraft,libraryDraft,libraryDraftChanged,applyLibraryMutation} from './libraryDraft';
+import {saveThenRefresh} from './settingsSave';
 import {useNavigationSafety} from './useNavigationSafety';
 
 export default function Library({can,maxMB,onUse,onBusy,picker=false}:any){
 const [uploadBusy,setUploadBusy]=useState(false);
 const actions=useRef(new KeyedActions()),requests=useRef(new LatestRequest()),mounted=useRef(true);
+const readActions=useRef(new KeyedActions());
 const [active,setActive]=useState(new Set<string>()),[deleting,setDeleting]=useState<any>(null);
 const [editing,setEditing]=useState<{asset:{id:string;filename:string};draft:LibraryDraft;baseline:LibraryDraft}|null>(null),[discardEdit,setDiscardEdit]=useState(false),[editError,setEditError]=useState('');
 const dirty=!!editing&&libraryDraftChanged(editing.draft,editing.baseline);
@@ -20,16 +22,21 @@ const reportPending=useNavigationSafety(undefined,false,dirty);
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;requests.current.invalidate()}},[]);
 function uploadStatus(busy:boolean){setUploadBusy(busy);onBusy?.(busy)}
 const [items,setItems]=useState<any[]>([]),[folders,setFolders]=useState<string[]>([]),[folder,setFolder]=useState(''),[tag,setTag]=useState(''),[q,setQ]=useState(''),[search,setSearch]=useState(''),[archived,setArchived]=useState(false),[loading,setLoading]=useState(true);
+const [loadError,setLoadError]=useState(''),[reading,setReading]=useState(false),[loadedQuery,setLoadedQuery]=useState('');
+const query=new URLSearchParams({folder,tag,q:search,archived:String(archived)}).toString();
+const currentFilters=useRef({folder,tag,archived});currentFilters.current={folder,tag,archived};
 // Search waits for a typing pause instead of querying on every keystroke.
 useEffect(()=>{const id=setTimeout(()=>setSearch(q.trim()),300);return()=>clearTimeout(id)},[q]);
-const load=useCallback(()=>{if(!mounted.current)return Promise.resolve();return requests.current.run(()=>api('media?'+new URLSearchParams({folder,tag,q:search,archived:String(archived)})),r=>{setItems(r.items);setFolders(r.folders)},(e:any)=>toast.error(t(e.message)),()=>setLoading(false))},[folder,tag,search,archived]);
+const load=useCallback(()=>{if(!mounted.current)return Promise.resolve(false);setReading(true);return requests.current.run(()=>api('media?'+query),r=>{setItems(r.items);setFolders(r.folders);setLoadedQuery(query);setLoadError('')},(e:any)=>setLoadError(e.message),()=>{setLoading(false);setReading(false)})},[query]);
 const latestLoad=useRef(load);latestLoad.current=load;
+async function retryList(){await readActions.current.run('list-read',async()=>{await latestLoad.current()})}
 useEffect(()=>{setLoading(true);load();return()=>requests.current.invalidate()},[load]);
 useEffect(()=>{if(!items.some(a=>['processing','queued','converting'].includes(a.status)))return;const id=setTimeout(load,3000);return()=>clearTimeout(id)},[items,load]);
 async function mutate(a:any,changes:any,method:string,msg:string){
 try{return await actions.current.run(a.id,async()=>{
 reportPending(true);setActive(previous=>new Set(previous).add(a.id));
-try{await api('media/'+a.id,changes,method);if(mounted.current){toast.success(msg);if(method==='DELETE')setDeleting(null);else setEditing(current=>current?.asset.id===a.id?null:current);await latestLoad.current()}}
+let result:any;
+try{await saveThenRefresh({save:async()=>{result=await api('media/'+a.id,changes,method)},saved:()=>{if(mounted.current){requests.current.invalidate();setItems(current=>applyLibraryMutation(current,a.id,method,result,currentFilters.current));toast.success(msg);if(method==='DELETE')setDeleting(null);else setEditing(current=>current?.asset.id===a.id?null:current)}},refresh:async()=>{if(mounted.current)return latestLoad.current()},refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak medya listesi yenilenemedi. İşlemi tekrarlamadan listeyi yenile.'))}})}
 finally{if(mounted.current)setActive(previous=>{const next=new Set(previous);next.delete(a.id);return next})}
 })}catch(e:any){if(mounted.current){toast.error(t(e.message));if(editing?.asset.id===a.id)setEditError(e.message);if(e.status===404||e.status===409)await latestLoad.current()}return false}
 finally{if(mounted.current)reportPending(actions.current.size>0)}
@@ -40,9 +47,11 @@ function openEditor(asset:any){if(actions.current.has(asset.id))return;const dra
 function closeEditor(){if(editing&&actions.current.has(editing.asset.id))return;if(dirty)setDiscardEdit(true);else setEditing(null)}
 function saveEditor(event:any){event.preventDefault();if(editing){setEditError('');return save(editing.asset,{folder:editing.draft.folder,tags:editing.draft.tags.split(',')},t('Medya bilgileri kaydedildi.'))}}
 const tags=[...new Set(items.flatMap(a=>a.tags))].sort();
-return <div className="library">{can('media')&&!picker&&<section className="panel library-upload"><MediaUpload asset={null} onUploaded={()=>load()} onRemove={()=>{}} onBusy={uploadStatus} maxMB={maxMB} multiple/></section>}
+return <div className="library">{can('media')&&!picker&&<section className="panel library-upload"><MediaUpload asset={null} onUploaded={()=>latestLoad.current()} onRemove={()=>{}} onBusy={uploadStatus} maxMB={maxMB} multiple/></section>}
 <div className="library-filters"><label className="search-field"><Search size={15}/><input placeholder={t('Dosya adında ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><select value={folder} onChange={e=>setFolder(e.target.value)} aria-label={t('Klasör')}><option value="">{t('Tüm klasörler')}</option>{folders.map(f=><option key={f}>{f}</option>)}</select><select value={tag} onChange={e=>setTag(e.target.value)} aria-label={t('Etiket')}><option value="">{t('Tüm etiketler')}</option>{tags.map(tg=><option key={tg}>{tg}</option>)}</select>{!picker&&<label className="inline-options"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>{t('Arşiv')}</label>}</div>
-{loading?<div className="empty-state"><Loader2 className="spin"/>{t('Kütüphane yükleniyor…')}</div>:!items.length?<div className="empty-state"><Folder size={36}/><h3>{t(archived?'Arşiv boş.':'Kütüphanende henüz medya yok.')}</h3><p>{t('Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.')}</p></div>:
+{loadError&&<p className="error" role="alert">{t(loadError)} <button type="button" className="inline-link" disabled={reading} onClick={()=>void retryList()}>{t('Tekrar dene')}</button></p>}
+{!loading&&items.length>0&&loadedQuery!==query&&<p role="status">{t('Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.')}</p>}
+{loading?<div className="empty-state"><Loader2 className="spin"/>{t('Kütüphane yükleniyor…')}</div>:!items.length?<div className="empty-state"><Folder size={36}/><h3>{t(loadError?'Medya listesi alınamadı.':archived?'Arşiv boş.':'Kütüphanende henüz medya yok.')}</h3><p>{t(loadError?'Bağlantını kontrol edip tekrar dene.':'Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.')}</p></div>:
 <div className="library-grid">{items.map(a=><article key={a.id} aria-busy={active.has(a.id)} className={'library-card '+(a.status==='failed'?'asset-failed':'')}>
 <div className="library-thumb">{a.url&&a.mime_type.startsWith('image')?<img src={mediaSrc(a.url)} alt={a.filename} loading="lazy" decoding="async"/>:a.url?<video src={mediaSrc(a.url)} muted preload="metadata"/>:a.status==='failed'?<FileVideo size={30}/>:<Loader2 className="spin" size={26}/>}{a.stored==='cloudinary'&&<span className="cloud-badge" title={t("Cloudinary'de saklanıyor")}><Cloud size={12}/></span>}</div>
 <div className="library-info"><strong title={a.filename}>{a.filename}</strong><small>{a.status==='ready'?`${a.width}×${a.height} · ${bytes(a.size)}`:a.status==='failed'?(a.error||t('Hazırlanamadı')):t('Hazırlanıyor…')}</small>

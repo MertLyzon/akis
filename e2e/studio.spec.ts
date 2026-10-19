@@ -45,6 +45,47 @@ test('a timed-out draft save keeps the editor and only an explicit retry resends
   expect(bodies).toHaveLength(2);expect(bodies[1].requestId).toBe(bodies[0].requestId);
 });
 
+test('a failed initial library read shows an error rather than an empty library and retry is single-flight',async({page})=>{
+  const asset={id:'test-library-retry',filename:'retry-library.png',folder:'',tags:[],status:'failed',error:'Test fixture',mime_type:'image/png',url:null,archived:false};
+  let reads=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(/\/api\/media\?/,async route=>{
+    reads++;
+    if(reads===1)return route.fulfill({status:503,json:{error:'Library temporarily unavailable'}});
+    await held;return route.fulfill({json:{items:[asset],folders:[]}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  const warning=page.getByRole('alert').filter({hasText:'Library temporarily unavailable'});
+  await expect(warning).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Medya listesi alınamadı.',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Kütüphanende henüz medya yok.',exact:true})).toHaveCount(0);
+  await warning.getByRole('button',{name:'Tekrar dene',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>reads).toBe(2);await expect(warning.getByRole('button')).toBeDisabled();
+  release();await expect(page.locator('.library-card')).toContainText('retry-library.png');
+  await expect(warning).toBeHidden();expect(reads).toBe(2);
+});
+
+test('a confirmed media delete remains removed when list refresh fails and retry only reads',async({page})=>{
+  const asset={id:'test-library-delete',filename:'delete-library.png',folder:'',tags:[],status:'failed',error:'Test fixture',mime_type:'image/png',url:null,archived:false};
+  let deletes=0,reads=0,recovered=false;
+  await page.route(/\/api\/media\?/,route=>{
+    reads++;
+    if(deletes&&!recovered)return route.fulfill({status:503,json:{error:'Library refresh unavailable'}});
+    return route.fulfill({json:{items:deletes?[]:[asset],folders:[]}});
+  });
+  await page.route('**/api/media/test-library-delete',route=>{expect(route.request().method()).toBe('DELETE');deletes++;return route.fulfill({json:{ok:true}})});
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  await page.locator('.library-card').getByRole('button',{name:'Sil',exact:true}).click();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Sil',exact:true}).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();await expect(page.locator('.library-card')).toHaveCount(0);
+  await expect(page.getByText('İşlem tamamlandı ancak medya listesi yenilenemedi. İşlemi tekrarlamadan listeyi yenile.',{exact:true})).toBeVisible();
+  const warning=page.getByRole('alert').filter({hasText:'Library refresh unavailable'});
+  await expect(warning).toBeVisible();const before=reads;recovered=true;
+  await warning.getByRole('button',{name:'Tekrar dene',exact:true}).click();
+  await expect(warning).toBeHidden();await expect(page.getByRole('heading',{name:'Kütüphanende henüz medya yok.',exact:true})).toBeVisible();
+  expect(deletes).toBe(1);expect(reads).toBe(before+1);
+});
+
 test('library labels survive list refresh and failed saves without duplicate mutations',async({page})=>{
   const asset={id:'test-library-labels',filename:'library-labels.png',folder:'Original',tags:['one'],status:'processing',mime_type:'image/png',url:null,archived:false};
   let items=[asset],requests=0,release!:()=>void;

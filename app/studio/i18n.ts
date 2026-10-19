@@ -1,6 +1,10 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İşlem tamamlandı ancak medya listesi yenilenemedi. İşlemi tekrarlamadan listeyi yenile.':'The operation completed, but the media list could not be refreshed. Refresh the list instead of repeating the operation.',
+  'Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.':'Results from the previous filter are shown. Try again to load the current list.',
+  'Medya listesi alınamadı.':'The media list could not be loaded.',
+  'Bağlantını kontrol edip tekrar dene.':'Check your connection and try again.',
   'İşlem tamamlandı ancak ekip bilgileri yenilenemedi. İşlemi tekrarlamadan bilgileri yenile.':'The operation completed, but team information could not be refreshed. Refresh the information instead of repeating the operation.',
   'Bilgileri yenile':'Refresh information',
   'Bağlantı durumu kontrol ediliyor…':'Checking connection status…',
