@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseInviteToken,needsAuthenticator} from '../app/studio/authFlow.ts';
+import {parseInviteToken,needsAuthenticator,parseInvitation,invitationUnavailable} from '../app/studio/authFlow.ts';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
+
+const invitation={company:'Test company',email:'test@example.com',role:'editor',expires_at:1_800_000_000};
+test('invitation details accept supported roles without retaining unrelated response fields',()=>{
+  for(const role of ['admin','approver','editor','viewer'])assert.deepEqual(parseInvitation({...invitation,role,unrelated:'not retained'}),{...invitation,role});
+});
+for(const [name,value] of Object.entries({null:null,empty:{},company:{...invitation,company:''},companyType:{...invitation,company:{}},email:{...invitation,email:'invalid'},emailSpaces:{...invitation,email:'a b@example.com'},role:{...invitation,role:'unknown'},dateString:{...invitation,expires_at:'1800000000'},dateZero:{...invitation,expires_at:0},dateFraction:{...invitation,expires_at:1.5},dateNaN:{...invitation,expires_at:NaN},dateInfinite:{...invitation,expires_at:Infinity},dateRange:{...invitation,expires_at:8_640_000_000_001}}))test(`malformed invitation ${name} gives a retryable error without exposing response details`,()=>{
+  assert.throws(()=>parseInvitation(value),/^Error: Davet bilgileri alınamadı\. Bağlantını kontrol edip tekrar dene\.$/);
+});
+test('invitation expiry decisions remain on the server rather than trusting the device clock',()=>{
+  assert.equal(parseInvitation({...invitation,expires_at:1}).expires_at,1);
+});
+test('only explicit unavailable invitation statuses stop acceptance retries',()=>{
+  assert.equal(invitationUnavailable(404),true);assert.equal(invitationUnavailable(410),true);
+  for(const status of [200,400,401,403,409,429,500,503])assert.equal(invitationUnavailable(status),false);
+});
 
 test('invitation tokens accept URL-safe values at both supported length limits',()=>{
   for(const value of ['a'.repeat(20),'b'.repeat(100),'Akis_123-'.repeat(4)])assert.equal(parseInviteToken('#davet='+value),value);

@@ -652,6 +652,43 @@ test('login preserves credentials after failure and locks the two-factor step',a
   await expect(page.locator('#content')).toBeVisible();expect(requests).toBe(4);
 });
 
+test('malformed invitation details can be retried without overlapping checks',async({page})=>{
+  const token='c'.repeat(32);let reads=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/invites/'+token,async route=>{
+    reads++;if(reads===1)return route.fulfill({json:null});
+    await held;return route.fulfill({json:{company:'Test company',email:'test@example.com',role:'editor',expires_at:Math.floor(Date.now()/1000)+3600}});
+  });
+  await page.goto('/#davet='+token);
+  await expect(page.getByRole('alert')).toContainText('Davet bilgileri alınamadı.');
+  await expect(page.getByRole('form',{name:'Daveti kabul et',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Tekrar dene',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>reads).toBe(2);release();
+  await expect(page.getByRole('form',{name:'Daveti kabul et',exact:true})).toBeVisible();expect(reads).toBe(2);
+});
+
+test('an unavailable invitation offers a new-link explanation rather than another lookup',async({page})=>{
+  const token='d'.repeat(32);let reads=0;
+  await page.route('**/api/invites/'+token,route=>{reads++;return route.fulfill({status:404,json:{error:'Invitation unavailable'}})});
+  await page.goto('/#davet='+token);
+  await expect(page.getByText('Bu davet artık kullanılamıyor. Şirket yöneticinden yeni bir davet bağlantısı iste.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Tekrar dene',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('form',{name:'Daveti kabul et',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Davet olmadan devam et',exact:true})).toBeEnabled();expect(reads).toBe(1);
+});
+
+test('an invitation revoked while filling the form cannot be submitted again',async({page})=>{
+  const token='e'.repeat(32);let accepts=0;
+  await page.route('**/api/invites/'+token,route=>route.fulfill({json:{company:'Test company',email:'test@example.com',role:'editor',expires_at:Math.floor(Date.now()/1000)+3600}}));
+  await page.route('**/api/invites/'+token+'/accept',route=>{accepts++;return route.fulfill({status:404,json:{error:'Invitation revoked'}})});
+  await page.goto('/#davet='+token);
+  const form=page.getByRole('form',{name:'Daveti kabul et',exact:true});
+  await form.getByLabel('Akış parolan',{exact:true}).fill('test-only-password');
+  await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();
+  await expect(form).toHaveCount(0);await expect(page.getByRole('alert')).toContainText('Invitation revoked');
+  await expect(page.getByRole('button',{name:'Tekrar dene',exact:true})).toHaveCount(0);expect(accepts).toBe(1);
+});
+
 test('a late invitation response cannot replace a new link and acceptance is single-flight',async({page})=>{
   const old='a'.repeat(32),fresh='b'.repeat(32);
   let releaseOld!:()=>void,releaseAccept!:()=>void;
