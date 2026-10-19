@@ -335,6 +335,41 @@ test('OAuth navigation stays locked until both the start request and popup are c
   await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
 });
 
+test('OAuth completion stays locked through a failed state check and retries only the read',async({page})=>{
+  await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();
+  snapshot.connections=[];
+  snapshot.settings.oauth_apps=[{platform:'x',client_id:'test-client',redirect_uri:'http://127.0.0.1:5173/api/oauth/x/callback',mode:'web',has_secret:true}];
+  let checking=false,reads=0,starts=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/state',async route=>{
+    if(!checking)return route.fulfill({json:snapshot});
+    reads++;
+    if(reads===1){await held;return route.fulfill({status:503,json:{error:'Connection state unavailable'}})}
+    return route.fulfill({json:snapshot});
+  });
+  await page.route('**/api/oauth/start',route=>{starts++;return route.fulfill({json:{url:'about:blank'}})});
+  await page.reload();await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  const card=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true}).locator('xpath=../..');
+  const opened=page.waitForEvent('popup');
+  await card.getByRole('button',{name:'Hesapla bağlan',exact:true}).click();
+  const popup=await opened;await expect.poll(()=>starts).toBe(1);
+  checking=true;
+  await popup.evaluate(origin=>window.opener.postMessage({type:'akis-oauth',ok:true,message:'Test account connected'},origin),new URL(page.url()).origin);
+  await expect.poll(()=>reads).toBe(1);await expect.poll(()=>popup.isClosed()).toBe(true);
+  await expect(card.getByRole('status')).toContainText('Bağlantı durumu kontrol ediliyor…');
+  await expect(card.getByRole('button',{name:'Hesapla bağlan',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeDisabled();
+  release();
+  const warning=card.getByRole('alert').filter({hasText:'Bağlantı durumu yenilenemedi.'});
+  await expect(warning).toBeVisible();
+  await expect(page.getByRole('button',{name:'Hesabım',exact:true})).toBeEnabled();
+  await warning.getByRole('button',{name:'Tekrar dene',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect(warning).toBeHidden();await expect.poll(()=>reads).toBe(2);
+  await expect(card.getByRole('button',{name:'Hesapla bağlan',exact:true})).toBeEnabled();
+  expect(starts).toBe(1);
+});
+
 test('unsaved platform settings require confirmation and survive background refresh',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/state')).json();

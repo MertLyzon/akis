@@ -6,7 +6,7 @@ import {platforms,api,dateInput,isApp,serverUrl,openExternal} from './api';
 import {Checkbox} from '@/components/ui/checkbox';
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
-import {saveThenRefresh} from './settingsSave';
+import {saveThenRefresh,refreshWithWarning} from './settingsSave';
 import {ConnectionDraft,connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
 import {useNavigationSafety} from './useNavigationSafety';
 
@@ -16,10 +16,12 @@ function fields(saved:any):ConnectionDraft{return {account:saved?.account||'',la
 function Connection({p,saved,app,refresh,onSettings}:any){
 const [token,setToken]=useState(''),[refreshToken,setRefreshToken]=useState(''),[draft,setDraft]=useState(()=>fields(saved)),[baseline,setBaseline]=useState(()=>fields(saved)),[busy,setBusy]=useState(false),[oauthOpen,setOAuthOpen]=useState(false),[removing,setRemoving]=useState(false),[error,setError]=useState('');
 const previous=useRef(fields(saved)),actions=useRef(new KeyedActions()),mounted=useRef(true),operationPending=useRef(false),popup=useRef<Window|null>(null),popupOrigin=useRef(''),latestRefresh=useRef(refresh);
+const oauthResultPending=useRef(false);
+const [oauthRefreshing,setOAuthRefreshing]=useState(false),[oauthRefreshFailed,setOAuthRefreshFailed]=useState(false);
 const reportPending=useNavigationSafety(undefined,false,connectionDraftChanged(draft,baseline,token,refreshToken));
 latestRefresh.current=refresh;
-const locked=busy||oauthOpen;
-function syncPending(){reportPending(operationPending.current||!!(popup.current&&!popup.current.closed))}
+const locked=busy||oauthOpen||oauthRefreshing;
+function syncPending(){reportPending(operationPending.current||oauthResultPending.current||!!(popup.current&&!popup.current.closed))}
 function edit<K extends keyof ConnectionDraft>(key:K,value:ConnectionDraft[K]){setDraft(current=>({...current,[key]:value}))}
 function closePopup(){const current=popup.current;popup.current=null;try{current?.close()}catch{};if(mounted.current){setOAuthOpen(false);syncPending()}}
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;closePopup()}},[]);
@@ -27,15 +29,23 @@ useEffect(()=>{const incoming=fields(saved),before=previous.current;previous.cur
 useEffect(()=>{
 const handle=(event:MessageEvent)=>{
 if(!isOAuthResult(event,popup.current,popupOrigin.current))return;
-closePopup();event.data.ok?toast.success(event.data.message):toast.error(event.data.message);
-Promise.resolve().then(()=>latestRefresh.current()).catch(()=>{if(mounted.current)toast.warning(t('Bağlantı durumu yenilenemedi. Listeyi tekrar yenile.'))});
+void refreshOAuthState(()=>{closePopup();event.data.ok?toast.success(event.data.message):toast.error(event.data.message)});
 };
 window.addEventListener('message',handle);return()=>window.removeEventListener('message',handle);
 },[]);
 useEffect(()=>{if(!oauthOpen)return;const id=setInterval(()=>{if(!popup.current||popup.current.closed){popup.current=null;setOAuthOpen(false);syncPending()}},500);return()=>clearInterval(id)},[oauthOpen]);
 
+async function refreshOAuthState(start?:()=>void){
+if(oauthResultPending.current)return;
+oauthResultPending.current=true;setOAuthRefreshing(true);setOAuthRefreshFailed(false);syncPending();
+try{
+start?.();
+await refreshWithWarning(()=>latestRefresh.current(),()=>{if(mounted.current){setOAuthRefreshFailed(true);toast.warning(t('Bağlantı durumu yenilenemedi. Listeyi tekrar yenile.'))}});
+}finally{oauthResultPending.current=false;if(mounted.current){setOAuthRefreshing(false);syncPending()}}
+}
+
 async function guarded(operation:()=>Promise<void>){
-if(popup.current&&!popup.current.closed)return false;
+if(oauthResultPending.current||popup.current&&!popup.current.closed)return false;
 try{return await actions.current.run('connection',async()=>{operationPending.current=true;syncPending();setBusy(true);setError('');try{await operation()}finally{operationPending.current=false;if(mounted.current){setBusy(false);syncPending()}}})}
 catch(e:any){if(mounted.current){setError(e.message);toast.error(t(e.message))}return false}
 }
@@ -70,6 +80,8 @@ return <section className="panel connection" aria-busy={locked}>
 {saved&&<div className={'expiry '+(saved.days_left!==null&&saved.days_left<=7?'expiry-warn':'')}><Clock3 size={17}/><div><strong>{saved.days_left===null?t('Bitiş tarihi belirtilmedi'):saved.days_left<=0?t('Bağlantının süresi doldu'):t('Bağlantı {days} gün sonra sona erecek',{days:saved.days_left})}</strong><p>{t(saved.can_refresh?'Otomatik yenileme açık.':'Otomatik yenileme yok; gerektiğinde yeniden bağlan.')}</p>{saved.refresh_error&&<p className="warn">{t(saved.refresh_error)}</p>}</div></div>}
 <div className="oauth-actions"><button className="primary" disabled={locked} onClick={connect}><Link2 size={16}/>{t(saved?'Yeniden bağlan':'Hesapla bağlan')}</button>{saved?.can_refresh&&<button className="secondary" disabled={locked} onClick={()=>commit(()=>api('connections/refresh',{platform:p.id}),'Yenileme kontrolü tamamlandı.')}><RefreshCw size={15}/>{t('Yenile')}</button>}</div>
 {oauthOpen&&<p role="status">{t('Hesap bağlantısı açılan pencerede bekleniyor.')} <button className="inline-link" type="button" onClick={closePopup}>{t('Bağlantı penceresini kapat')}</button></p>}
+{oauthRefreshing&&<p role="status">{t('Bağlantı durumu kontrol ediliyor…')}</p>}
+{oauthRefreshFailed&&<p className="error" role="alert">{t('Bağlantı durumu yenilenemedi. Listeyi tekrar yenile.')} <button type="button" className="inline-link" disabled={locked} onClick={()=>void refreshOAuthState()}>{t('Tekrar dene')}</button></p>}
 {error&&!removing&&<p className="error" role="alert">{t(error)}</p>}
 {!app&&<p className="field-help">{t('Tek tıkla bağlantı için')} <button className="inline-link" disabled={locked} onClick={onSettings}>{t('uygulama ayarlarını')}</button> {t('tamamla.')}</p>}
 {p.id==='whatsapp'&&<label className="wa-account-label">{t('WhatsApp telefon numarası ID')}<input disabled={locked} value={draft.account} onChange={e=>edit('account',e.target.value)} placeholder={t('Meta panelindeki numara ID')} inputMode="numeric"/></label>}
