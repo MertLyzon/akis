@@ -40,6 +40,41 @@ async function runtime(t,native=false){
 }
 function json(data,status=200,tag){return Response.json(data,{status,headers:tag?{ETag:tag}:{}})}
 
+const uncertainWrite='İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.';
+for(const method of ['POST','PUT','PATCH','delete'])for(const failure of ['network','invalid-json'])test(`${method} ${failure} reports an unconfirmed write without retrying`,async t=>{
+  const {api,calls}=await runtime(t);
+  const writing=api.api('posts/test',{text:'Test content'},method);
+  const rejected=assert.rejects(writing,error=>error.message===uncertainWrite&&!(error instanceof api.ApiError));
+  if(failure==='network')calls[0].reject(new TypeError('test-only internal detail'));
+  else calls[0].resolve(new Response('test-only invalid response',{status:200}));
+  await rejected;await Promise.resolve();assert.equal(calls.length,1);
+});
+for(const method of ['GET','head'])for(const failure of ['network','invalid-json'])test(`${method} ${failure} keeps read-only connection guidance`,async t=>{
+  const {api,calls}=await runtime(t);
+  const reading=api.api('session',undefined,method);
+  const rejected=assert.rejects(reading,error=>error.message===(failure==='network'?'Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.':'Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.'));
+  if(failure==='network')calls[0].reject(new TypeError('test-only internal detail'));
+  else calls[0].resolve(new Response('test-only invalid response',{status:502}));
+  await rejected;assert.equal(calls.length,1);
+});
+test('valid server error responses preserve status, message and support code for writes',async t=>{
+  const {api,calls}=await runtime(t);
+  for(const status of [400,401,403,409,429,500,503]){
+    const index=calls.length,writing=api.api('posts/test',{},'PATCH');
+    const rejected=assert.rejects(writing,error=>error instanceof api.ApiError&&error.status===status&&error.data.support_code==='test-code'&&error.message.includes('Test rejection')&&error.message.includes('test-code'));
+    calls[index].resolve(json({error:'Test rejection',support_code:'test-code'},status));await rejected;
+    assert.equal(calls.length,index+1);
+  }
+});
+test('an unconfirmed native write neither clears authentication nor installs a token from an unreadable response',async t=>{
+  const {api,calls,stored}=await runtime(t,true);api.setToken('current-token');
+  const writing=api.api('connections',{token:'test-only-platform-key'});
+  const rejected=assert.rejects(writing,error=>error.message===uncertainWrite);
+  calls[0].resolve(new Response('{"token":"late-token",invalid}',{status:200}));await rejected;
+  assert.equal(api.authHeaders().Authorization,'Bearer current-token');assert.equal(stored.get('akis-token'),'current-token');
+  assert.equal(calls.length,1);
+});
+
 test('a forgotten in-flight workspace cannot repopulate its ETag or return stale data',async t=>{
   const {api,calls}=await runtime(t);api.setCompany('company');
   const old=api.fetchState();api.forgetState();

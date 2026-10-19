@@ -1,6 +1,7 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The operation result could not be confirmed. It may have completed on the server. Check the result before trying again.',
   'İşlem tamamlandı ancak medya listesi yenilenemedi. İşlemi tekrarlamadan listeyi yenile.':'The operation completed, but the media list could not be refreshed. Refresh the list instead of repeating the operation.',
   'Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.':'Results from the previous filter are shown. Try again to load the current list.',
   'Medya listesi alınamadı.':'The media list could not be loaded.',
