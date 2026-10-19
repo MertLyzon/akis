@@ -38,7 +38,12 @@ export class ApiError extends Error{data:any;status:number;constructor(message:s
 function errorMessage(data:any){const message=t(data?.error||'İşlem tamamlanamadı.');return data?.support_code?`${message} ${t('Destek kodu')}: ${data.support_code}`:message}
 export async function api(path:string,body?:any,method?:string){
 const revision=authRevision,verb=method||(body?'POST':'GET');let r:Response,j:any;
-try{({response:r,data:j}=await fetchJson(apiUrl(path),{method:verb,headers:{...companyHeader(),...authHeaders(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})},apiTimeout(path)))}catch(error){if(error instanceof RequestTimeoutError)throw new Error(['GET','HEAD'].includes(verb.toUpperCase())?'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.');if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}
+const readOnly=['GET','HEAD'].includes(verb.toUpperCase());
+try{({response:r,data:j}=await fetchJson(apiUrl(path),{method:verb,headers:{...companyHeader(),...authHeaders(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})},apiTimeout(path)))}catch(error){
+if(error instanceof RequestTimeoutError)throw new Error(readOnly?'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.');
+// A lost connection or unreadable response does not prove that a write failed.
+if(!readOnly)throw new Error('İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.');
+if(error instanceof InvalidJsonError)throw new Error('Sunucuya ulaşılamıyor. Biraz sonra tekrar dene.');throw new Error('Sunucuya ulaşılamıyor. İnternet bağlantını kontrol et.')}
 if(!r.ok){if(r.status===401&&isApp&&token&&revision===authRevision)setToken('');throw new ApiError(errorMessage(j),r.status,j)}
 if(isApp&&j&&typeof j.token==='string'&&revision===authRevision)setToken(j.token);
 return j;
