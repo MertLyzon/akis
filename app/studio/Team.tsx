@@ -8,6 +8,7 @@ import {KeyedActions,LatestRequest} from './libraryRequests';
 import {copyToClipboard} from './clipboard';
 import {useNavigationSafety} from './useNavigationSafety';
 import {CompanyDraft,companyDraft,companyDraftChanged,invitationDraftChanged,mergeCompanyDraft} from './teamDraft';
+import {saveThenRefresh,refreshTogether,refreshWithWarning} from './settingsSave';
 
 async function copySecret(value:string){try{await copyToClipboard(value);toast.success(t('Kopyalandı.'))}catch{toast.error(t('Kopyalanamadı. Metni seçip elle kopyalayabilirsin.'))}}
 
@@ -21,6 +22,7 @@ function Secret({email,password,onClose}:any){return <div className="secret-card
 export default function Team({tz,can,me,refreshState,onNavigationState}:any){
 const actions=useRef(new KeyedActions()),companyRequest=useRef(new LatestRequest()),auditRequest=useRef(new LatestRequest()),mounted=useRef(true),auditPending=useRef(false);
 const [busy,setBusy]=useState(false),[auditBusy,setAuditBusy]=useState(false),[loadError,setLoadError]=useState(''),[confirmation,setConfirmation]=useState<{kind:'revoke'|'reset'|'remove';person:any}|null>(null);
+const [refreshFailed,setRefreshFailed]=useState(false);
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;companyRequest.current.invalidate();auditRequest.current.invalidate()}},[]);
 const [link,setLink]=useState<any>(null),[data,setData]=useState<any>(null),[audit,setAudit]=useState<any[]>([]),[more,setMore]=useState(true),[secret,setSecret]=useState<any>(null),[email,setEmail]=useState(''),[name,setName]=useState(''),[role,setRole]=useState('editor');
 const [company,setCompany]=useState<CompanyDraft|null>(null),[companyBaseline,setCompanyBaseline]=useState<CompanyDraft|null>(null);
@@ -33,10 +35,20 @@ auditPending.current=true;setAuditBusy(true);
 return auditRequest.current.run(()=>api('audit?'+new URLSearchParams({before:String(before),before_id:beforeId,limit:'50'})),r=>{setAudit(a=>before?[...new Map([...a,...r.items].map(item=>[item.id,item])).values()]:r.items);setMore(r.items.length===50)},(e:any)=>toast.error(t(e.message)),()=>{auditPending.current=false;setAuditBusy(false)});
 },[]);
 useEffect(()=>{load();loadAudit()},[load,loadAudit]);
+function reload(){return refreshTogether([load,loadAudit,()=>refreshState()])}
+function warnRefresh(){if(mounted.current){setRefreshFailed(true);toast.warning(t('İşlem tamamlandı ancak ekip bilgileri yenilenemedi. İşlemi tekrarlamadan bilgileri yenile.'))}}
+async function retryRefresh(){
+await actions.current.run('team',async()=>{
+reportPending(true);setBusy(true);
+try{await refreshWithWarning(async()=>{const ok=await reload();if(ok&&mounted.current)setRefreshFailed(false);return ok},warnRefresh)}
+finally{if(mounted.current){reportPending(false);setBusy(false)}}
+});
+}
 async function call(path:string,body:any,method:string|undefined,msg:string,onSuccess?:(result:any)=>void){
 try{return await actions.current.run('team',async()=>{
 reportPending(true);setBusy(true);
-try{const result=await api(path,body,method);if(mounted.current){onSuccess?.(result);setConfirmation(null);toast.success(msg);await Promise.allSettled([load(),loadAudit(),Promise.resolve().then(()=>refreshState())])}}
+let result:any;
+try{await saveThenRefresh({save:async()=>{result=await api(path,body,method)},saved:()=>{if(mounted.current){onSuccess?.(result);setConfirmation(null);setRefreshFailed(false);toast.success(msg)}},refresh:async()=>{if(mounted.current)return reload()},refreshFailed:warnRefresh})}
 finally{if(mounted.current){reportPending(false);setBusy(false)}}
 })}catch(e:any){if(mounted.current)toast.error(t(e.message));return false}
 }
@@ -58,6 +70,7 @@ const c=data.company,u=data.usage,draft=company||companyDraft(c);
 const zones:string[]=[...new Set<string>([c.timezone,draft.timezone,...((Intl as any).supportedValuesOf?.('timeZone')||[])])];
 return <div className="team">
 <div className="stats">{[{label:'Ekip üyesi',value:data.members.length},{label:'Son 30 gün gönderim',value:u.deliveries_30d},{label:'Onay bekleyen',value:u.pending_approval},{label:'Medya depolama',value:u.storage_limit_bytes?`${bytes(u.storage_bytes)} / ${bytes(u.storage_limit_bytes)}`:bytes(u.storage_bytes)}].map(s=><div className="stat-card" key={s.label}><span>{t(s.label)}</span><strong>{s.value}</strong></div>)}</div>
+{refreshFailed&&<p className="error" role="alert">{t('İşlem tamamlandı ancak ekip bilgileri yenilenemedi. İşlemi tekrarlamadan bilgileri yenile.')} <button className="inline-link" type="button" disabled={busy} onClick={()=>void retryRefresh()}>{t('Bilgileri yenile')}</button></p>}
 {loadError&&<p className="error" role="alert">{t(loadError)} <button onClick={()=>load()}>{t('Tekrar dene')}</button></p>}
 {can('settings')&&<section className="panel pad"><h2><Building2 size={18}/>{t('Şirket ayarları')}</h2><form className="form-grid" aria-label={t('Şirket ayarları')} aria-busy={busy} onSubmit={saveCompany}><label>{t('Şirket adı')}<input name="name" disabled={busy} value={draft.name} onChange={e=>setCompany({...draft,name:e.target.value})} required maxLength={120}/></label><label>{t('Saat dilimi')}<select name="timezone" disabled={busy} value={draft.timezone} onChange={e=>setCompany({...draft,timezone:e.target.value})}>{zones.map(z=><option key={z}>{z}</option>)}</select></label><label className="inline-options wide"><input type="checkbox" name="approval" disabled={busy} checked={draft.require_approval} onChange={e=>setCompany({...draft,require_approval:e.target.checked})}/>{t('Editörlerin hazırladığı içerikler yayımlanmadan önce onaylansın')}</label><p className="field-help wide">{t('Takvim ve planlı paylaşımlar bu saat dilimine göre çalışır. Yöneticiler ve onaylayanlar kendi içeriklerini doğrudan yayımlayabilir.')}</p><button className="primary" disabled={busy}>{t(busy?'İşlem sürüyor…':'Kaydet')}</button></form></section>}
 <section className="panel pad"><h2><Users size={18}/>{t('Ekip ve roller')}</h2>

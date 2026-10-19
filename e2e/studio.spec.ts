@@ -872,10 +872,11 @@ test('platform settings lock repeated saves and preserve the secret after failur
 test('team invitation locks repeated submits and preserves fields after failure',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/company')).json();
-  let requests=0;
+  let requests=0,companyReads=0,recovered=false,releaseRetry!:()=>void;
+  const retryHeld=new Promise<void>(resolve=>{releaseRetry=resolve});
   let release!:()=>void;
   const held=new Promise<void>(resolve=>{release=resolve});
-  await page.route('**/api/company',route=>requests<2?route.fulfill({json:snapshot}):route.fulfill({status:503,json:{error:'Company refresh unavailable'}}));
+  await page.route('**/api/company',async route=>{companyReads++;if(recovered)await retryHeld;return requests<2||recovered?route.fulfill({json:snapshot}):route.fulfill({status:503,json:{error:'Company refresh unavailable'}})});
   await page.route('**/api/company/members',async route=>{
     requests++;
     if(requests===1){await held;return route.fulfill({status:503,json:{error:'Invitation temporarily unavailable'}})}
@@ -899,6 +900,17 @@ test('team invitation locks repeated submits and preserves fields after failure'
   await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
   await expect(page.getByRole('alert').filter({hasText:'Company refresh unavailable'})).toBeVisible();
   await expect(form.getByPlaceholder('E-posta',{exact:true})).toHaveValue('');
+  const warning=page.getByRole('alert').filter({hasText:'İşlem tamamlandı ancak ekip bilgileri yenilenemedi.'});
+  await expect(warning).toBeVisible();
+  const beforeRetry=companyReads;recovered=true;
+  await warning.getByRole('button',{name:'Bilgileri yenile',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>companyReads).toBe(beforeRetry+1);
+  await expect(form.getByRole('button',{name:'Davet et',exact:true})).toBeDisabled();
+  await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
+  releaseRetry();await expect(warning).toBeHidden();
+  await expect(form.getByRole('button',{name:'Davet et',exact:true})).toBeEnabled();
+  await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
+  expect(companyReads).toBe(beforeRetry+1);
   expect(requests).toBe(2);
 });
 

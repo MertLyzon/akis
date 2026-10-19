@@ -19,3 +19,10 @@ export async function refreshWithWarning(refresh:()=>Promise<unknown>,refreshFai
   try{result=await refresh()}catch{refreshFailed();return}
   if(result===false)refreshFailed();
 }
+
+// Attempt every independent read and wait for all of them. A failed read must
+// not hide another result or turn an already committed mutation into a failure.
+export async function refreshTogether(reads:Array<()=>Promise<unknown>>){
+  const results=await Promise.allSettled(reads.map(read=>Promise.resolve().then(read)));
+  return results.every(result=>result.status==='fulfilled'&&result.value!==false);
+}
