@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveThenRefresh} from '../app/studio/settingsSave.ts';
+import {saveThenRefresh,refreshWithWarning} from '../app/studio/settingsSave.ts';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
 import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
@@ -9,6 +9,29 @@ function steps(overrides={}){
   const events=[];
   return {events,callbacks:{save:async()=>{events.push('save')},saved:()=>events.push('saved'),refresh:async()=>{events.push('refresh')},refreshFailed:()=>events.push('refresh-failed'),...overrides}};
 }
+
+test('read-only refresh reports false and thrown failures without a save callback',async()=>{
+  for(const failure of ['false','throw']){
+    let reads=0,warnings=0;
+    await refreshWithWarning(async()=>{reads++;if(failure==='throw')throw Error('offline');return false},()=>{warnings++});
+    assert.equal(reads,1);assert.equal(warnings,1);
+  }
+});
+
+test('a deliberate read-only retry makes one fresh read and stops warning after recovery',async()=>{
+  let reads=0,warnings=0;
+  const refresh=async()=>++reads>1;
+  await refreshWithWarning(refresh,()=>warnings++);
+  await refreshWithWarning(refresh,()=>warnings++);
+  assert.equal(reads,2);assert.equal(warnings,1);
+});
+
+test('read-only refresh waits for the result rather than acknowledging the request start',async()=>{
+  const held=deferred();let finished=false,warnings=0;
+  const reading=refreshWithWarning(()=>held.promise,()=>warnings++).then(()=>{finished=true});
+  await Promise.resolve();assert.equal(finished,false);assert.equal(warnings,0);
+  held.resolve(false);await reading;assert.equal(finished,true);assert.equal(warnings,1);
+});
 
 test('successful save is acknowledged before refreshing the list',async()=>{
   const h=steps();await saveThenRefresh(h.callbacks);

@@ -1,6 +1,7 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Bağlantı durumu kontrol ediliyor…':'Checking connection status…',
   'Çıkış doğrulanamadı. Sunucudaki oturumun açık kalmış olabilir. Bağlantını kontrol edip çıkışı tekrar dene.':'Sign-out could not be confirmed. Your server session may still be active. Check your connection and try signing out again.',
   'Oturum kontrol edilemedi':'Could not check your session',
   'Bağlantını kontrol edip oturumunu yeniden kontrol et. Parolan tekrar gönderilmeyecek.':'Check your connection and check your session again. Your password will not be sent again.',
