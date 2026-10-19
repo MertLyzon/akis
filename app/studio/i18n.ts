@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Davet bilgileri alınamadı. Bağlantını kontrol edip tekrar dene.':'Invitation details could not be loaded. Check your connection and try again.',
+  'Bu davet artık kullanılamıyor. Şirket yöneticinden yeni bir davet bağlantısı iste.':'This invitation is no longer available. Ask your company administrator for a new invitation link.',
   'İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The operation result could not be confirmed. It may have completed on the server. Check the result before trying again.',
   'İşlem tamamlandı ancak medya listesi yenilenemedi. İşlemi tekrarlamadan listeyi yenile.':'The operation completed, but the media list could not be refreshed. Refresh the list instead of repeating the operation.',
   'Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.':'Results from the previous filter are shown. Try again to load the current list.',
