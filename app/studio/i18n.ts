@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İşlem tamamlandı ancak ekip bilgileri yenilenemedi. İşlemi tekrarlamadan bilgileri yenile.':'The operation completed, but team information could not be refreshed. Refresh the information instead of repeating the operation.',
+  'Bilgileri yenile':'Refresh information',
   'Bağlantı durumu kontrol ediliyor…':'Checking connection status…',
   'Çıkış doğrulanamadı. Sunucudaki oturumun açık kalmış olabilir. Bağlantını kontrol edip çıkışı tekrar dene.':'Sign-out could not be confirmed. Your server session may still be active. Check your connection and try signing out again.',
   'Oturum kontrol edilemedi':'Could not check your session',

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {saveThenRefresh,refreshWithWarning} from '../app/studio/settingsSave.ts';
+import {saveThenRefresh,refreshWithWarning,refreshTogether} from '../app/studio/settingsSave.ts';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
 import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
@@ -9,6 +9,40 @@ function steps(overrides={}){
   const events=[];
   return {events,callbacks:{save:async()=>{events.push('save')},saved:()=>events.push('saved'),refresh:async()=>{events.push('refresh')},refreshFailed:()=>events.push('refresh-failed'),...overrides}};
 }
+
+test('grouped refresh starts every read and waits for all even after an early failure',async()=>{
+  const held=deferred(),started=[];let finished=false;
+  const group=refreshTogether([
+    async()=>{started.push('company');throw Error('unavailable')},
+    async()=>{started.push('audit');return true},
+    ()=>{started.push('workspace');return held.promise},
+  ]).then(result=>{finished=true;return result});
+  await Promise.resolve();await Promise.resolve();
+  assert.deepEqual(started,['company','audit','workspace']);assert.equal(finished,false);
+  held.resolve(true);assert.equal(await group,false);
+});
+test('a handled false result makes the grouped refresh unsuccessful',async()=>{
+  for(let failed=0;failed<3;failed++){
+    assert.equal(await refreshTogether([0,1,2].map(index=>async()=>index!==failed)),false);
+  }
+});
+test('a synchronous read failure cannot prevent the remaining reads',async()=>{
+  let remaining=0;
+  assert.equal(await refreshTogether([()=>{throw Error('failed')},async()=>{remaining++;return true}]),false);
+  assert.equal(remaining,1);
+});
+test('successful grouped reads support both boolean and legacy void results',async()=>{
+  assert.equal(await refreshTogether([async()=>true,async()=>undefined]),true);
+  assert.equal(await refreshTogether([]),true);
+});
+test('retrying a failed group never repeats the committed mutation or replaces its one-time result',async()=>{
+  let writes=0,reads=0,warnings=0,secret='';let healthy=false;
+  const reload=()=>refreshTogether([async()=>{reads++;return healthy},async()=>true]);
+  await saveThenRefresh({save:async()=>{writes++},saved:()=>{secret='one-time-result'},refresh:reload,refreshFailed:()=>warnings++});
+  assert.equal(warnings,1);assert.equal(secret,'one-time-result');
+  healthy=true;await refreshWithWarning(reload,()=>warnings++);
+  assert.equal(writes,1);assert.equal(reads,2);assert.equal(secret,'one-time-result');assert.equal(warnings,1);
+});
 
 test('read-only refresh reports false and thrown failures without a save callback',async()=>{
   for(const failure of ['false','throw']){
