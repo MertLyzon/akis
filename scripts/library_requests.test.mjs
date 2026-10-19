@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
-import {libraryDraft,libraryDraftChanged} from '../app/studio/libraryDraft.ts';
+import {libraryDraft,libraryDraftChanged,applyLibraryMutation} from '../app/studio/libraryDraft.ts';
 import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
 test('library editor captures its own label values without retaining the asset object',()=>{
@@ -9,6 +9,29 @@ test('library editor captures its own label values without retaining the asset o
   asset.folder='Refreshed';asset.tags.push('three');
   assert.deepEqual(draft,{folder:'Original',tags:'one, two'});
   assert.equal(libraryDraftChanged(draft,{...draft}),false);
+});
+
+const media=[{id:'a',archived:false,folder:'Original',tags:['one']},{id:'b',archived:false,folder:'Other',tags:[]}];
+const mediaFilters={archived:false,folder:'',tag:''};
+test('confirmed media deletion immediately removes only that item without mutating the previous list',()=>{
+  assert.deepEqual(applyLibraryMutation(media,'a','DELETE',{ok:true},mediaFilters),[media[1]]);
+  assert.equal(media.length,2);
+});
+test('confirmed media edits use the normalized server result',()=>{
+  const updated=applyLibraryMutation(media,'a','PATCH',{id:'a',folder:'Normalized',tags:['two']},mediaFilters);
+  assert.deepEqual(updated[0],{...media[0],folder:'Normalized',tags:['two']});
+  assert.equal(media[0].folder,'Original');assert.equal(updated[1],media[1]);
+});
+test('confirmed changes remove media that no longer matches archive, folder or tag filters',()=>{
+  for(const [result,filters] of [[{id:'a',archived:true},mediaFilters],[{id:'a',folder:'Moved'},{...mediaFilters,folder:'Original'}],[{id:'a',tags:['new']},{...mediaFilters,tag:'one'}]]){
+    assert.deepEqual(applyLibraryMutation([media[0]],'a','PATCH',result,filters),[]);
+  }
+});
+test('missing or unrelated edit results cannot replace a different media item',()=>{
+  for(const result of [null,undefined,{}, {id:'other',folder:'Wrong'}])assert.equal(applyLibraryMutation(media,'a','PATCH',result,mediaFilters),media);
+});
+test('a confirmed edit does not invent an item outside the currently loaded result',()=>{
+  assert.deepEqual(applyLibraryMutation([media[1]],'a','PATCH',media[0],mediaFilters),[media[1]]);
 });
 test('empty library metadata starts clean',()=>{
   const draft=libraryDraft({});assert.deepEqual(draft,{folder:'',tags:''});
