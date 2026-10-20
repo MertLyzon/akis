@@ -1,10 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from '../app/studio/connectionDraft.ts';
+import {connectionDraftChanged,connectionSaveNeeded,isOAuthResult,mergeConnectionDraft} from '../app/studio/connectionDraft.ts';
 
 const previous={account:'123',label:'Original',expiry:'2030-01-01T10:00',refreshExpiry:'2030-02-01T10:00',long:false};
 const incoming={account:'456',label:'Updated',expiry:'2030-01-02T10:00',refreshExpiry:'2030-02-02T10:00',long:true};
 const edits={account:'789',label:'My unsaved label',expiry:'2031-01-01T10:00',refreshExpiry:'2031-02-01T10:00',long:true};
+
+test('unchanged saved connections do not send another save',()=>{
+  assert.equal(connectionSaveNeeded(true,{...previous},previous,'',''),false);
+});
+test('new connections remain saveable with native required-field validation',()=>{
+  assert.equal(connectionSaveNeeded(false,{...previous},previous,'',''),true);
+});
+test('every metadata edit, including deliberate clearing, requires saving',()=>{
+  for(const field of Object.keys(edits))assert.equal(connectionSaveNeeded(true,{...previous,[field]:edits[field]},previous,'',''),true);
+  assert.equal(connectionSaveNeeded(true,{...previous,label:''},previous,'',''),true);
+});
+test('token-only and refresh-token-only replacements still require saving',()=>{
+  assert.equal(connectionSaveNeeded(true,previous,previous,'test-only-token',''),true);
+  assert.equal(connectionSaveNeeded(true,previous,previous,'','test-only-refresh'),true);
+});
+test('a confirmed save or restoring all fields stops repeated writes, while failed drafts stay saveable',()=>{
+  assert.equal(connectionSaveNeeded(true,edits,previous,'',''),true);
+  assert.equal(connectionSaveNeeded(true,edits,edits,'',''),false);
+  assert.equal(connectionSaveNeeded(true,previous,previous,'',''),false);
+});
 
 test('an untouched connection form does not need a navigation warning',()=>{
   assert.equal(connectionDraftChanged({...previous},previous,'',''),false);
