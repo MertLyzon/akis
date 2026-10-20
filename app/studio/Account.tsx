@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {KeyRound,ShieldCheck,Smartphone,MonitorSmartphone} from 'lucide-react';
+import PasswordField from './PasswordField';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {toast} from 'sonner';
 import {api} from './api';
@@ -51,9 +52,9 @@ return <div className="account">
 {me.must_change_password&&!passwordChanged&&<div className="expiry expiry-warn"><KeyRound size={17}/><span>{t('Hesabın geçici parolayla açıldı. Devam etmeden önce kendi parolanı belirle.')}</span></div>}
 <section className="panel pad"><h2><KeyRound size={18}/>{t('Parola')}</h2><p className="field-help">{me.email} · {t('Parolan değişince diğer cihazlardaki oturumlar kapanır.')}</p>
 <form className="form-grid" aria-label={t('Parolayı değiştir')} aria-busy={active==='password'} onSubmit={changePassword}>
-<label>{t('Mevcut parola')}<input disabled={busy} type="password" autoComplete="current-password" required maxLength={300} value={pw.current} onChange={e=>setPw({...pw,current:e.target.value})}/></label>
-<label>{t('Yeni parola · en az 10 karakter')}<input disabled={busy} type="password" autoComplete="new-password" minLength={10} maxLength={300} required value={pw.next} onChange={e=>setPw({...pw,next:e.target.value})}/></label>
-<label>{t('Yeni parola tekrar')}<input disabled={busy} type="password" autoComplete="new-password" minLength={10} maxLength={300} required value={pw.again} onChange={e=>setPw({...pw,again:e.target.value})}/></label>
+<PasswordField label={t('Mevcut parola')} disabled={busy} autoComplete="current-password" required maxLength={300} value={pw.current} onChange={e=>setPw({...pw,current:e.target.value})}/>
+<PasswordField label={t('Yeni parola · en az 10 karakter')} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.next} onChange={e=>setPw({...pw,next:e.target.value})}/>
+<PasswordField label={t('Yeni parola tekrar')} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.again} onChange={e=>setPw({...pw,again:e.target.value})}/>
 {passwordError&&<p className="error wide" role="alert">{t(error.message)}</p>}
 <button className="primary" disabled={busy}>{t(active==='password'?'İşlem sürüyor…':'Parolayı değiştir')}</button></form></section>
 <section className="panel pad"><h2><ShieldCheck size={18}/>{t('İki aşamalı giriş')}</h2>
@@ -61,7 +62,7 @@ return <div className="account">
 {enabled?<><p className="field-help"><span className="pill saved">{t('Açık')}</span> {t('Hesabın korunuyor. Bundan sonraki girişlerde parolana ek olarak doğrulama uygulamandaki kod istenir.')}</p>
 {!showDisable?<button className="secondary account-disable-toggle" disabled={busy} onClick={()=>{setError(null);setShowDisable(true)}}>{t('İki aşamalı girişi kapat')}</button>:<div className="totp-disable"><p className="field-help">{t('Yalnızca iki aşamalı korumayı kapatmak istiyorsan parolanı ve doğrulama uygulamandaki güncel kodu gir.')}</p>
 <form className="form-grid" aria-label={t('İki aşamalı girişi kapat')} aria-busy={active==='disable'} onSubmit={disable}>
-<label>{t('Mevcut parola')}<input disabled={busy} type="password" autoComplete="current-password" required maxLength={300} value={off.password} onChange={e=>setOff({...off,password:e.target.value})}/></label>
+<PasswordField label={t('Mevcut parola')} disabled={busy} autoComplete="current-password" required maxLength={300} value={off.password} onChange={e=>setOff({...off,password:e.target.value})}/>
 <label>{t('Doğrulama uygulamasındaki 6 haneli kod')}<input disabled={busy} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 \-]{6,12}" maxLength={12} required value={off.code} onChange={e=>setOff({...off,code:e.target.value})}/></label>
 <div className="account-disable-actions"><button className="secondary" disabled={busy}>{t(active==='disable'?'İşlem sürüyor…':"2FA'yı kapat")}</button><button type="button" className="text-button" disabled={busy} onClick={()=>{setShowDisable(false);setOff({password:'',code:''});setError(null)}}>{t('Vazgeç')}</button></div></form></div>}</>:
 !setup?<><p className="field-help">{t('Google Authenticator, Microsoft Authenticator, 1Password veya Authy gibi bir uygulama ile hesabını koru. Şirket hesapları için önerilir.')}</p><button className="primary" disabled={busy} onClick={()=>call('setup','me/2fa/setup',{},'',result=>{setSetup(result);setCode('')})}><Smartphone size={15}/>{t(active==='setup'?'İşlem sürüyor…':'Kurulumu başlat')}</button></>:

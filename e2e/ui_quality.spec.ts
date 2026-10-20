@@ -1,5 +1,27 @@
 import {expect,test} from '@playwright/test';
 
+test('password visibility is explicit, never submits the form and resets after clearing or submitting',async({page})=>{
+  let logins=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/session',route=>route.fulfill({json:{authenticated:false,local:false,user:null}}));
+  await page.route('**/api/login',async route=>{logins++;await held;return route.fulfill({status:401,json:{error:'Test login rejected'}})});
+  await page.goto('/');
+  const password=page.getByLabel('Parola',{exact:true});
+  const show=page.getByRole('button',{name:'Parolayı göster · Parola',exact:true});
+  await expect(show).toBeDisabled();await expect(password).toHaveAttribute('type','password');
+  await page.getByLabel('E-posta',{exact:true}).fill('visibility-test@example.com');
+  await password.fill('test-only-password');await show.click();
+  await expect(password).toHaveAttribute('type','text');expect(logins).toBe(0);
+  await password.fill('');await password.fill('test-only-password');
+  await expect(password).toHaveAttribute('type','password');
+  await show.click();await page.getByRole('button',{name:'Giriş yap',exact:true}).click();
+  await expect.poll(()=>logins).toBe(1);await expect(password).toHaveAttribute('type','password');
+  await expect(show).toBeDisabled();release();
+  await expect(page.getByRole('alert')).toHaveText('Test login rejected');
+  await expect(password).toHaveValue('test-only-password');await expect(password).toHaveAttribute('type','password');
+  await expect(show).toBeEnabled();expect(logins).toBe(1);
+});
+
 test('quick navigation traps focus, recovers from empty results and restores its trigger',async({page})=>{
   await page.goto('/');
   const trigger=page.getByRole('button',{name:"Akış'ta ara",exact:true});
