@@ -9,10 +9,10 @@ import {useNavigationSafety} from './useNavigationSafety';
 import {saveThenRefresh} from './settingsSave';
 import {postFilters,filterPosts,matchesPost,nextPostFilter,postMediaStatus} from './postFilters';
 import {postActionFailure} from './postActionFailure';
-import {PostReadBarrier} from './postReadBarrier';
+import type {PostReadBarrier} from './postReadBarrier';
 import {KeyedActions} from './libraryRequests';
 
-export default function Posts({posts,loading,refresh,can,tz,onEdit,onDuplicate,initialFilter='all'}:any){
+export default function Posts({posts,loading,refresh,readBarrier,can,tz,onEdit,onDuplicate,initialFilter='all'}:any){
 const [filter,setFilter]=useState(initialFilter),[q,setQ]=useState('');
 const filterId=useId(),searchInput=useRef<HTMLInputElement>(null);
 const inFlight=useRef(new Set<string>()),mounted=useRef(true);
@@ -21,26 +21,27 @@ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
 const [active,setActive]=useState(new Set<string>()),[confirmation,setConfirmation]=useState<{post:any;kind:'reject'|'cancel'|'delete'}|null>(null),[note,setNote]=useState('');
 const [confirmationError,setConfirmationError]=useState(''),[confirmationStale,setConfirmationStale]=useState(false);
 const [actionErrors,setActionErrors]=useState<Record<string,ReturnType<typeof postActionFailure>&{updatedAt:unknown}>>({});
-const barrier=useRef(new PostReadBarrier()),reads=useRef(new KeyedActions());
-const [blocked,setBlocked]=useState(new Set<string>()),[reading,setReading]=useState(false);
+const barrier:PostReadBarrier=readBarrier,reads=useRef(new KeyedActions());
+const [,renderBarrier]=useState(0),[reading,setReading]=useState(false);
+const blocked=new Set(barrier.snapshot().keys());
 const locked=(id:string)=>active.has(id)||blocked.has(id);
-function syncBarrier(){if(mounted.current)setBlocked(new Set(barrier.current.snapshot().keys()))}
-async function readPosts(){const before=barrier.current.snapshot();const result=await refresh();if(result!==false&&mounted.current){barrier.current.confirm(before);syncBarrier()}return result}
+function syncBarrier(){if(mounted.current)renderBarrier(value=>value+1)}
+async function readPosts(){const result=await refresh();syncBarrier();return result}
 async function reload(){return reads.current.run('list',async()=>{setReading(true);try{if(await readPosts()===false&&mounted.current)toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}catch{if(mounted.current)toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}finally{if(mounted.current)setReading(false)}})}
 const confirmationBusy=!!confirmation&&active.has(confirmation.post.id);
 const needle=q.trim().toLocaleLowerCase('tr');
 const shown=useMemo(()=>filterPosts(posts,filter,q),[posts,filter,q]);
 const stats=useMemo(()=>[{label:'Toplam içerik',value:posts.length},{label:'Onay bekleyen',value:posts.filter((p:any)=>p.status==='pending_approval').length},{label:'Planlı',value:posts.filter((p:any)=>p.status==='scheduled').length},{label:'Kontrol gerekiyor',value:posts.filter((p:any)=>matchesPost(p,'attention')).length}],[posts]);
 async function act(id:string,path:string,body:any,done:string,method?:string){
-if(inFlight.current.has(id)||barrier.current.has(id))return false;
+if(inFlight.current.has(id)||barrier.has(id))return false;
 inFlight.current.add(id);reportPending(true);setActive(new Set(inFlight.current));
 setActionErrors(current=>{const next={...current};delete next[id];return next});
-const refreshFailed=()=>{if(mounted.current){barrier.current.hold(id);syncBarrier();toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}};
+const refreshFailed=()=>{if(mounted.current){barrier.hold(id);syncBarrier();toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}};
 try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)return await readPosts()},refreshFailed});return true}
 catch(e:any){if(mounted.current){const failure=postActionFailure(e);setActionErrors(current=>({...current,[id]:{...failure,updatedAt:posts.find((post:any)=>post.id===id)?.updated_at}}));toast.error(t(failure.message));if(confirmation?.post.id===id){setConfirmationError(failure.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
 finally{inFlight.current.delete(id);if(mounted.current){reportPending(inFlight.current.size>0);setActive(new Set(inFlight.current))}}
 }
-function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id)||barrier.current.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
+function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id)||barrier.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
 async function confirmAction(){
 if(!confirmation||confirmationStale)return;
 const {post,kind}=confirmation;

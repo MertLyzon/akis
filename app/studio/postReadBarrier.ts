@@ -6,6 +6,7 @@ export class PostReadBarrier{
   has(id:string){return this.holds.has(id)}
   hold(id:string){this.holds.set(id,++this.revision)}
   snapshot(){return new Map(this.holds)}
+  clear(){this.holds.clear()}
   confirm(snapshot:Map<string,number>){
     for(const [id,revision] of snapshot)if(this.holds.get(id)===revision)this.holds.delete(id);
   }

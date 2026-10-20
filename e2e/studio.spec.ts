@@ -247,7 +247,7 @@ for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled'
   await expect(modal).toBeHidden();expect(requests).toBe(2);
 });
 
-test('a confirmed approval with a failed refresh locks its old card and retry only reads',async({page})=>{
+test('a confirmed approval hold survives navigation and retry only reads after failed refresh',async({page})=>{
   await page.goto('/');const ids:string[]=[];
   for(const name of ['A','B']){
     const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Confirmed approval refresh ${name}`,platforms:['x']}});
@@ -271,6 +271,11 @@ test('a confirmed approval with a failed refresh locks its old card and retry on
   await expect(row.getByRole('button',{name:'Onayla',exact:true})).toBeDisabled();
   await expect(row.getByRole('button',{name:'Düzenle',exact:true})).toBeDisabled();
   await expect(other.getByRole('button',{name:'Onayla',exact:true})).toBeEnabled();expect(writes).toBe(1);
+  await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  await expect(page.getByRole('form',{name:'Parolayı değiştir',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:/^Gönderiler/}).click();await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  await expect(retry).toBeVisible();await expect(row.getByRole('button',{name:'Onayla',exact:true})).toBeDisabled();
+  expect(writes).toBe(1);
   const before=reads;recovered=true;
   await retry.evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>reads).toBe(before+1);await expect(retry).toBeDisabled();expect(writes).toBe(1);
