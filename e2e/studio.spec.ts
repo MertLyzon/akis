@@ -247,6 +247,32 @@ for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled'
   await expect(modal).toBeHidden();expect(requests).toBe(2);
 });
 
+test('post action failures remain on their own card and clear only after a new attempt or changed post',async({page})=>{
+  await page.goto('/');const ids:string[]=[];
+  for(const name of ['A','B']){
+    const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Persistent failure ${name}`,platforms:['x']}});
+    ids.push((await created.json()).id);
+  }
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const posts=ids.map(id=>snapshot.posts.find((post:any)=>post.id===id));posts.forEach(post=>{post.status='pending_approval'});
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));let writes=0;
+  await page.route(`**/api/posts/${ids[0]}/approve`,route=>{
+    writes++;if(writes===1)return route.fulfill({status:503,json:{error:'Test approval unavailable'}});
+    posts[0].status='processing';posts[0].updated_at+=1;return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();await page.getByRole('button',{name:/^Gönderiler/}).click();await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  const row=page.locator('article').filter({hasText:posts[0].text}),other=page.locator('article').filter({hasText:posts[1].text});
+  await row.getByRole('button',{name:'Onayla',exact:true}).click();
+  await expect(row.getByRole('alert')).toContainText('Test approval unavailable');
+  await expect(row.getByRole('alert')).toContainText('İstek sunucuda tamamlanmış olabilir.');
+  await expect(other.getByRole('alert')).toHaveCount(0);expect(writes).toBe(1);
+  await page.getByRole('button',{name:'Yenile',exact:true}).click();
+  await expect(row.getByRole('alert')).toContainText('Test approval unavailable');expect(writes).toBe(1);
+  await row.getByRole('button',{name:'Onayla',exact:true}).click();
+  await expect(row.getByRole('alert')).toHaveCount(0);await expect(row.getByRole('button',{name:'Onayla',exact:true})).toHaveCount(0);
+  expect(writes).toBe(2);
+});
+
 test('independent post approvals can overlap but navigation stays locked until both finish',async({page})=>{
   await page.goto('/');
   const ids=[];

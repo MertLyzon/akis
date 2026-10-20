@@ -8,6 +8,7 @@ import {t} from './i18n';
 import {useNavigationSafety} from './useNavigationSafety';
 import {saveThenRefresh} from './settingsSave';
 import {postFilters,filterPosts,matchesPost,nextPostFilter,postMediaStatus} from './postFilters';
+import {postActionFailure} from './postActionFailure';
 
 export default function Posts({posts,loading,refresh,can,tz,onEdit,onDuplicate,initialFilter='all'}:any){
 const [filter,setFilter]=useState(initialFilter),[q,setQ]=useState('');
@@ -17,6 +18,7 @@ const reportPending=useNavigationSafety(undefined,false);
 useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
 const [active,setActive]=useState(new Set<string>()),[confirmation,setConfirmation]=useState<{post:any;kind:'reject'|'cancel'|'delete'}|null>(null),[note,setNote]=useState('');
 const [confirmationError,setConfirmationError]=useState(''),[confirmationStale,setConfirmationStale]=useState(false);
+const [actionErrors,setActionErrors]=useState<Record<string,ReturnType<typeof postActionFailure>&{updatedAt:unknown}>>({});
 const confirmationBusy=!!confirmation&&active.has(confirmation.post.id);
 const needle=q.trim().toLocaleLowerCase('tr');
 const shown=useMemo(()=>filterPosts(posts,filter,q),[posts,filter,q]);
@@ -24,9 +26,10 @@ const stats=useMemo(()=>[{label:'Toplam içerik',value:posts.length},{label:'Ona
 async function act(id:string,path:string,body:any,done:string,method?:string){
 if(inFlight.current.has(id))return false;
 inFlight.current.add(id);reportPending(true);setActive(new Set(inFlight.current));
+setActionErrors(current=>{const next={...current};delete next[id];return next});
 const refreshFailed=()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))};
 try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)return await refresh()},refreshFailed});return true}
-catch(e:any){if(mounted.current){toast.error(t(e.message));if(confirmation?.post.id===id){setConfirmationError(e.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
+catch(e:any){if(mounted.current){const failure=postActionFailure(e);setActionErrors(current=>({...current,[id]:{...failure,updatedAt:posts.find((post:any)=>post.id===id)?.updated_at}}));toast.error(t(failure.message));if(confirmation?.post.id===id){setConfirmationError(failure.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
 finally{inFlight.current.delete(id);if(mounted.current){reportPending(inFlight.current.size>0);setActive(new Set(inFlight.current))}}
 }
 function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
@@ -51,6 +54,7 @@ return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.
 {p.deliveries.length>0&&<div className="delivery-list">{p.deliveries.map((d:any)=><div key={d.id} className={'delivery '+d.status}><div className="delivery-heading"><strong>{platforms.find(x=>x.id===d.platform)?.name}</strong><span>{t(statuses[d.status]||d.status)}</span></div>{d.recipient&&<small>{t('Alıcı')}: {d.recipient}</small>}{d.status==='pending'&&d.next_attempt_at>Math.floor(Date.now()/1000)&&<small>{t('Sıradaki deneme')}: {inZone(d.next_attempt_at,tz)}</small>}{d.media_note&&<small className="media-note">{d.media_note}</small>}{d.error&&<small>{d.error}</small>}{d.error_code&&<small className="error-code">{t('Kod')}: {d.error_code}</small>}{d.retry_count>0&&<small>{t('Otomatik tekrar')}: {d.retry_count}/3</small>}{d.externalId&&<small className="external-id">{t('İşlem')}: {d.externalId}</small>}
 {d.attempts.length>0&&<details className="attempts"><summary><History size={13}/>{d.attempts_total??d.attempts.length} {t('deneme')}{(d.attempts_total??0)>d.attempts.length?` · ${t('son')} ${d.attempts.length}`:''}</summary><ol>{d.attempts.map((a:any,i:number)=><li key={i}><span>{inZone(a.started_at,tz,{dateStyle:'short',timeStyle:'medium'})}</span><strong>{t(outcomes[a.outcome]||a.outcome)}</strong><span>{t(stages[a.stage]||a.stage)}</span>{a.error_code&&<code>{a.error_code}</code>}{a.error&&<em>{t(a.error)}</em>}</li>)}</ol></details>}
 {d.status==='failed'&&can('approve')&&<button className="secondary" disabled={active.has(p.id)} onClick={()=>act(p.id,'retry',{delivery_id:d.id},t('Yeniden kuyruğa alındı.'))}>{t('Tekrar dene')}</button>}</div>)}</div>}
+{actionErrors[p.id]&&actionErrors[p.id].updatedAt===p.updated_at&&confirmation?.post.id!==p.id&&<p className="error" role="alert">{t(actionErrors[p.id].message)}{actionErrors[p.id].uncertain&&<span className="block">{t('İstek sunucuda tamamlanmış olabilir. Yeniden denemeden önce listeyi yenile.')}</span>}</p>}
 <div className="post-actions">{active.has(p.id)&&<span role="status"><Loader2 size={14} className="spin"/> {t('İşlem sürüyor…')}</span>}
 {p.status==='pending_approval'&&can('approve')&&<><button className="primary" disabled={active.has(p.id)} onClick={()=>act(p.id,`posts/${p.id}/approve`,{expected_updated_at:p.updated_at},t(p.scheduled_at?'Onaylandı, planlanan zamanda gönderilecek.':'Onaylandı, gönderim başladı.'))}><Check size={15}/>{t('Onayla')}</button><button className="secondary" disabled={active.has(p.id)} onClick={()=>ask(p,'reject')}><X size={15}/>{t('Reddet')}</button></>}
 {['draft','rejected','pending_approval'].includes(p.status)&&can('compose')&&<button className="secondary" disabled={active.has(p.id)} onClick={()=>onEdit(p)}><Pencil size={14}/>{t('Düzenle')}</button>}
@@ -63,6 +67,6 @@ return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.
 <AlertDialogHeader><AlertDialogTitle>{t(confirmation?.kind==='delete'?'İçeriği sil':confirmation?.kind==='cancel'?'Planı iptal et':'İçeriği reddet')}</AlertDialogTitle><AlertDialogDescription>{t(confirmation?.kind==='delete'?'Bu içerik kalıcı olarak silinsin mi?':confirmation?.kind==='cancel'?'Plan iptal edilsin mi? İçerik taslağa döner.':'Reddetme nedeni (editör bu notu görecek):')}</AlertDialogDescription></AlertDialogHeader>
 <p className="field-help line-clamp-3 break-words">{confirmation?.post.text||confirmation?.post.options?.template||t('Medya paylaşımı')}</p>
 {confirmation?.kind==='reject'&&<label htmlFor="review-note">{t('Red nedeni')}<Textarea id="review-note" className="max-h-48" maxLength={1000} required value={note} disabled={confirmationBusy} onChange={event=>setNote(event.target.value)}/></label>}
-{confirmationError&&<p className="error" role="alert">{t(confirmationError)}{confirmationStale&&' '+t('İçerik değişti veya kaldırıldı. Pencereyi kapatıp güncel liste üzerinden yeniden aç.')}</p>}
+{confirmationError&&<p className="error" role="alert">{t(confirmationError)}{confirmationStale&&' '+t('İçerik değişti veya kaldırıldı. Pencereyi kapatıp güncel liste üzerinden yeniden aç.')}{confirmation&&actionErrors[confirmation.post.id]?.uncertain&&<span className="block">{t('İstek sunucuda tamamlanmış olabilir. Yeniden denemeden önce listeyi yenile.')}</span>}</p>}
 <AlertDialogFooter><AlertDialogCancel disabled={confirmationBusy}>{t('İptal et')}</AlertDialogCancel><AlertDialogAction disabled={confirmationBusy||confirmationStale||(confirmation?.kind==='reject'&&!note.trim())} onClick={event=>{event.preventDefault();void confirmAction()}}>{confirmationBusy&&<Loader2 size={14} className="spin"/>}{t(confirmation?.kind==='delete'?'Sil':confirmation?.kind==='cancel'?'Planı iptal et':'Reddet')}</AlertDialogAction></AlertDialogFooter>
 </AlertDialogContent></AlertDialog></>}
