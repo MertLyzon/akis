@@ -304,9 +304,9 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
   )
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+function SidebarInset({ className, as: Component = "main", ...props }: React.ComponentProps<"div"> & { as?: "main" | "div" }) {
   return (
-    <main
+    <Component
       data-slot="sidebar-inset"
       className={cn(
         "relative flex w-full flex-1 flex-col bg-background",

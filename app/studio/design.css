@@ -46,6 +46,9 @@
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
 }
+.skip-link { position:fixed; top:max(12px,env(safe-area-inset-top)); left:16px; z-index:100; transform:translateY(-200%); padding:12px 18px; border:2px solid var(--primary); border-radius:8px; background:var(--card); color:var(--foreground); font-weight:600; text-decoration:none; }
+.skip-link:focus { transform:translateY(0); }
+.main:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
 :root[data-theme] :is(h1,h2,h3,strong,.field-title,label,.brand,.topbar strong) { color: var(--foreground); }
 :root[data-theme] :is(.field-help,.page-heading p,.preview-text,.post-media,.post-meta,.connection-heading p,.workspace small,.private,.mini-summary,.preview-title>span) { color: var(--muted-foreground); }
 .app-sidebar [data-slot=sidebar-inner] { padding: 20px 12px 12px; }

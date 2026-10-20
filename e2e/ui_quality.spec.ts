@@ -1,5 +1,29 @@
 import {expect,test} from '@playwright/test';
 
+test('main content has one landmark and a keyboard skip link without changing the invitation hash',async({page})=>{
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  await expect(page.getByRole('main')).toHaveCount(1);
+  const skip=page.getByRole('link',{name:'Ana içeriğe geç',exact:true});
+  await skip.focus();await expect(skip).toBeInViewport();
+  await skip.press('Enter');await expect(page.getByRole('main')).toBeFocused();
+  expect(new URL(page.url()).hash).toBe('');
+  await expect(page.getByRole('button',{name:'İçerik oluştur',exact:true})).toHaveAttribute('aria-current','page');
+  await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await expect(page.getByRole('button',{name:/^Gönderiler/})).toHaveAttribute('aria-current','page');
+  await expect(page.getByRole('main')).toHaveAccessibleName('Gönderiler');
+});
+
+test('phone menu exposes the current destination and dismisses after navigation',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  const menu=page.getByRole('button',{name:'Menüyü aç veya kapat',exact:true});
+  await menu.click();
+  const drawer=page.getByRole('dialog');await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole('button',{name:'İçerik oluştur',exact:true})).toHaveAttribute('aria-current','page');
+  await drawer.getByRole('button',{name:'Takvim',exact:true}).click();
+  await expect(drawer).toBeHidden();await expect(page.getByRole('main')).toHaveAccessibleName('Takvim');
+});
+
 test('system overview does not retain a healthy claim after failed refresh or missing assessment',async({page})=>{
   const snapshot=await (await page.request.get('/api/system/overview')).json();
   snapshot.operational={level:'healthy',issues:[]};let fail=false,reads=0;
