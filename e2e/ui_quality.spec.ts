@@ -1,5 +1,46 @@
 import {expect,test} from '@playwright/test';
 
+test('team search restores rows and failed activity reads have an explicit single-flight retry',async({page})=>{
+  let reads=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(/\/api\/audit\?/,async route=>{
+    reads++;if(reads===1)return route.fulfill({status:503,json:{error:'Audit temporarily unavailable'}});
+    await held;return route.fulfill({json:{items:[]}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const table=page.getByRole('table',{name:'Ekip üyeleri',exact:true});
+  await expect(table).toBeVisible();
+  const rows=await table.locator('tbody tr').count();expect(rows).toBeGreaterThan(0);
+  const search=page.getByRole('searchbox',{name:'Ekipte ara',exact:true});
+  await search.fill('no-member-with-this-name');await expect(table).toContainText('Aramana uyan üye yok.');
+  await table.getByRole('button',{name:'Aramayı temizle',exact:true}).click();await expect(search).toHaveValue('');await expect(search).toBeFocused();
+  await expect(table.locator('tbody tr')).toHaveCount(rows);
+  const history=page.locator('section').filter({has:page.getByRole('heading',{name:'İşlem geçmişi',exact:true})});
+  const error=history.getByRole('alert');await expect(error).toContainText('Audit temporarily unavailable');
+  await expect(history.getByText('Henüz işlem kaydı yok.',{exact:true})).toHaveCount(0);
+  await error.getByRole('button',{name:'Tekrar dene',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>reads).toBe(2);await expect(error.getByRole('button')).toBeDisabled();
+  release();await expect(error).toHaveCount(0);await expect(history.getByText('Henüz işlem kaydı yok.',{exact:true})).toBeVisible();expect(reads).toBe(2);
+});
+
+test('activity pagination retries its failed cursor without losing existing records',async({page})=>{
+  const first=Array.from({length:50},(_,i)=>({id:`activity-${i}`,at:1000-i,user:'Test member',action:'content.draft_saved',details:{}}));
+  const cursors:string[]=[];
+  await page.route(/\/api\/audit\?/,route=>{
+    const url=new URL(route.request().url());cursors.push(url.searchParams.get('before_id')||'');
+    if(cursors.length===1)return route.fulfill({json:{items:first}});
+    if(cursors.length===2)return route.fulfill({status:503,json:{error:'Older activity unavailable'}});
+    return route.fulfill({json:{items:[{id:'older-activity',at:900,user:'Older member',action:'content.draft_saved',details:{}}]}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  await expect(page.locator('.audit-list li')).toHaveCount(50);
+  await page.getByRole('button',{name:'Daha eski kayıtlar',exact:true}).click();
+  const error=page.getByRole('alert').filter({hasText:'Older activity unavailable'});await expect(error).toBeVisible();
+  await expect(page.locator('.audit-list li')).toHaveCount(50);
+  await error.getByRole('button',{name:'Tekrar dene',exact:true}).click();
+  await expect(page.locator('.audit-list li')).toHaveCount(51);expect(cursors).toEqual(['','activity-49','activity-49']);
+});
+
 test('saved app settings expose copy feedback and do not resend unchanged values',async({page})=>{
   const state=await (await page.request.get('/api/state')).json();
   const config={platform:'x',client_id:'original-client',redirect_uri:'https://example.com/api/oauth/x/callback',mode:'web',has_secret:true};

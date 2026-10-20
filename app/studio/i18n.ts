@@ -1,6 +1,15 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Ekip üyeleri':'Team members',
+  'Ekipte ara':'Search team',
+  'Ad veya e-posta ile ara':'Search by name or email',
+  '{shown} / {total} üye gösteriliyor':'Showing {shown} / {total} members',
+  'Aramana uyan üye yok.':'No members match your search.',
+  'Başka bir ad veya e-posta ara ya da aramayı temizle.':'Try another name or email, or clear your search.',
+  'Aramayı temizle':'Clear search',
+  'İşlem geçmişi yükleniyor…':'Loading activity history…',
+  'Henüz işlem kaydı yok.':'No activity recorded yet.',
   'Dönüş adresini kopyala':'Copy callback URL',
   'Kaydedilmemiş değişiklik yok.':'No unsaved changes.',
   'Süresi doldu':'Expired',
