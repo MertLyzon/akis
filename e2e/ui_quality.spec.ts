@@ -1,5 +1,42 @@
 import {expect,test} from '@playwright/test';
 
+test('account password mismatch focuses and describes the confirmation without sending credentials',async({page})=>{
+  let writes=0;
+  await page.route('**/api/me/password',route=>{writes++;return route.fulfill({status:503,json:{error:'Test password service unavailable'}})});
+  await page.goto('/');await page.getByRole('button',{name:'Hesabım',exact:true}).click();
+  const form=page.getByRole('form',{name:'Parolayı değiştir',exact:true}),confirmation=form.getByLabel('Yeni parola tekrar',{exact:true});
+  await form.getByLabel('Mevcut parola',{exact:true}).fill('test-current-password');
+  await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-new-password');
+  await confirmation.fill('test-different-password');
+  await form.getByRole('button',{name:'Parolayı değiştir',exact:true}).click();
+  await expect(confirmation).toBeFocused();await expect(confirmation).toHaveAttribute('aria-invalid','true');
+  await expect(confirmation).toHaveAccessibleDescription('Yeni parolalar eşleşmiyor.');expect(writes).toBe(0);
+  await confirmation.fill('test-new-password');
+  await expect(confirmation).not.toHaveAttribute('aria-invalid','true');await expect(form.getByRole('alert')).toHaveCount(0);
+  await form.getByRole('button',{name:'Parolayı değiştir',exact:true}).click();
+  await expect(form.getByRole('alert')).toContainText('Test password service unavailable');expect(writes).toBe(1);
+  await expect(confirmation).toHaveValue('test-new-password');
+});
+
+test('invitation password mismatch recovers inline and clears when switching account mode',async({page})=>{
+  const token='q'.repeat(32);let accepts=0;
+  await page.route('**/api/invites/'+token,route=>route.fulfill({json:{company:'Test company',email:'test@example.com',role:'editor',expires_at:Math.floor(Date.now()/1000)+3600}}));
+  await page.route('**/api/invites/'+token+'/accept',route=>{accepts++;return route.fulfill({status:503,json:{error:'Test invitation service unavailable'}})});
+  await page.goto('/#davet='+token);await page.getByRole('button',{name:'Yeni hesap',exact:true}).click();
+  const form=page.getByRole('form',{name:'Daveti kabul et',exact:true}),confirmation=form.getByLabel('Yeni parola tekrar',{exact:true});
+  await form.getByLabel('Yeni parola · en az 10 karakter',{exact:true}).fill('test-new-password');
+  await confirmation.fill('test-different-password');
+  await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();
+  await expect(confirmation).toBeFocused();await expect(confirmation).toHaveAccessibleDescription('Parolalar eşleşmiyor.');expect(accepts).toBe(0);
+  await form.getByRole('button',{name:'Hesabım var',exact:true}).click();
+  await form.getByRole('button',{name:'Yeni hesap',exact:true}).click();
+  await expect(confirmation).not.toHaveAttribute('aria-invalid','true');await expect(page.getByRole('alert')).toHaveCount(0);
+  await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();await expect(confirmation).toHaveAttribute('aria-invalid','true');
+  await confirmation.fill('test-new-password');await expect(page.getByRole('alert')).toHaveCount(0);
+  await form.getByRole('button',{name:'Daveti kabul et',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Test invitation service unavailable');expect(accepts).toBe(1);
+});
+
 test('failed media previews stop retrying automatically and a ready asset without URL is not processing',async({page})=>{
   let previews=0;const writes:string[]=[];
   const broken={id:'ui-broken-preview',filename:'broken.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:'/test-preview/broken.png',archived:false,width:100,height:100,size:10};
