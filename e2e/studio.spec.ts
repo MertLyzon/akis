@@ -22,6 +22,33 @@ test('a stopped upload can be replaced without a late old response replacing the
   await expect(page.locator('.asset-card')).not.toContainText('old.png');expect(requests).toBe(2);
 });
 
+test('starting an upload closes the picker and ignores a same-event stale media selection',async({page})=>{
+  const asset={id:'test-picked-media',filename:'existing-library.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:null,archived:false,width:1,height:1,size:10};
+  let uploads=0,saves=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route(/\/api\/media\?/,route=>route.fulfill({json:{items:[asset],folders:[]}}));
+  await page.route(/\/api\/media$/,async route=>{uploads++;await held;return route.fulfill({status:202,json:{id:'test-uploaded-media',filename:'new-upload.png',mime_type:'image/png',status:'processing',url:null}})});
+  await page.route('**/api/posts',route=>{saves++;return route.fulfill({json:{id:'unexpected-draft',outcome:'draft'}})});
+  await page.goto('/');await page.locator('#content').fill('Keep this draft text');
+  await page.getByRole('button',{name:'veya medya kütüphanesinden seç',exact:true}).click();
+  await expect(page.locator('.picker').getByRole('button',{name:'Seç',exact:true})).toBeVisible();
+  await page.evaluate(()=>{
+    const input=document.querySelector<HTMLInputElement>('input[type=file]')!;
+    const choose=[...document.querySelectorAll<HTMLButtonElement>('.picker button')].find(button=>button.textContent?.trim()==='Seç')!;
+    const save=[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()==='Taslağı kaydet')!;
+    const files=new DataTransfer();files.items.add(new File(['test-only-image'],'new-upload.png',{type:'image/png'}));
+    input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));choose.click();save.click();
+  });
+  await expect.poll(()=>uploads).toBe(1);await expect(page.locator('.picker')).toHaveCount(0);
+  await expect(page.locator('.asset-card')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeDisabled();
+  await expect(page.locator('#content')).toHaveValue('Keep this draft text');expect(saves).toBe(0);
+  release();await expect(page.locator('.asset-card')).toContainText('new-upload.png');
+  await expect(page.locator('.asset-card')).not.toContainText('existing-library.png');
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeEnabled();
+  expect(uploads).toBe(1);expect(saves).toBe(0);
+});
+
 test('a timed-out draft save keeps the editor and only an explicit retry resends its idempotency key',async({page})=>{
   await page.clock.install();
   let release!:()=>void;

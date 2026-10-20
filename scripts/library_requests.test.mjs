@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {KeyedActions,LatestRequest} from '../app/studio/libraryRequests.ts';
-import {libraryDraft,libraryDraftChanged,applyLibraryMutation} from '../app/studio/libraryDraft.ts';
+import {libraryDraft,libraryDraftChanged,applyLibraryMutation,canPickLibraryMedia} from '../app/studio/libraryDraft.ts';
 import {WorkspaceRefresh} from '../app/studio/workspaceRefresh.ts';
 
 test('library editor captures its own label values without retaining the asset object',()=>{
@@ -13,6 +13,20 @@ test('library editor captures its own label values without retaining the asset o
 
 const media=[{id:'a',archived:false,folder:'Original',tags:['one']},{id:'b',archived:false,folder:'Other',tags:[]}];
 const mediaFilters={archived:false,folder:'',tag:''};
+test('only ready, non-archived library media can be picked',()=>{
+  assert.equal(canPickLibraryMedia({id:'ready',status:'ready',archived:false},false,false),true);
+  for(const asset of [null,undefined,{}, {id:'',status:'ready'},{id:'processing',status:'processing'},{id:'failed',status:'failed'},{id:'archived',status:'ready',archived:true}])assert.equal(canPickLibraryMedia(asset,false,false),false);
+});
+test('an upload locks media selection immediately, before a React render',()=>{
+  const asset={id:'ready',status:'ready'};let uploading=false;
+  const pick=()=>canPickLibraryMedia(asset,false,uploading);
+  assert.equal(pick(),true);uploading=true;assert.equal(pick(),false);
+  uploading=false;assert.equal(pick(),true);
+});
+test('a pending save locks media selection regardless of upload state',()=>{
+  const asset={id:'ready',status:'ready'};
+  assert.equal(canPickLibraryMedia(asset,true,false),false);assert.equal(canPickLibraryMedia(asset,true,true),false);
+});
 test('confirmed media deletion immediately removes only that item without mutating the previous list',()=>{
   assert.deepEqual(applyLibraryMutation(media,'a','DELETE',{ok:true},mediaFilters),[media[1]]);
   assert.equal(media.length,2);
