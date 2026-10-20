@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Sunucu adresine kullanıcı adı veya parola ekleme.':'Do not include a username or password in the server address.',
+  'Sunucu adresini sorgu veya # bölümü olmadan gir.':'Enter the server address without query parameters or a fragment.',
   'Davet bilgileri alınamadı. Bağlantını kontrol edip tekrar dene.':'Invitation details could not be loaded. Check your connection and try again.',
   'Bu davet artık kullanılamıyor. Şirket yöneticinden yeni bir davet bağlantısı iste.':'This invitation is no longer available. Ask your company administrator for a new invitation link.',
   'İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The operation result could not be confirmed. It may have completed on the server. Check the result before trying again.',

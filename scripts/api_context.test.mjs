@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
 import {StateCache} from '../app/studio/stateCache.ts';
+import {normalizeServerAddress} from '../app/studio/serverAddress.ts';
+
+test('server addresses are canonicalized without dropping reverse-proxy base paths',()=>{
+  assert.equal(normalizeServerAddress(' HTTPS://EXAMPLE.COM:443/// '),'https://example.com');
+  assert.equal(normalizeServerAddress('https://example.com/akis///'),'https://example.com/akis');
+  assert.equal(normalizeServerAddress('https://example.com:8443/akis'),'https://example.com:8443/akis');
+});
+test('plain HTTP is limited to supported loopback addresses',()=>{
+  for(const host of ['localhost','127.0.0.1','[::1]'])assert.equal(normalizeServerAddress('http://'+host+':8000/'),'http://'+host+':8000');
+  for(const value of ['http://example.com','http://localhost.example.com','ftp://example.com','file:///tmp/test','javascript:alert(1)'])assert.throws(()=>normalizeServerAddress(value),/https:\/\//);
+});
+for(const value of ['https://user:password@example.com','https://user@example.com','https://example.com?key=test','https://example.com#token','https://example.com/?','https://example.com/#'])test(`server input rejects credentials or URL suffixes (${value})`,()=>{
+  assert.throws(()=>normalizeServerAddress(value),/Sunucu adres/);
+});
+test('missing and malformed server addresses fail locally',()=>{
+  for(const value of ['','  ','example.com','https://','not a url'])assert.throws(()=>normalizeServerAddress(value),/Geçerli bir sunucu adresi gir/);
+});
 
 test('clearing state invalidates old responses even when returning to the same company',()=>{
   const cache=new StateCache(),old=cache.begin('company');
@@ -39,6 +56,46 @@ async function runtime(t,native=false){
   return {api,calls,stored};
 }
 function json(data,status=200,tag){return Response.json(data,{status,headers:tag?{ETag:tag}:{}})}
+
+test('changing server clears native credentials and company before any later request',async t=>{
+  const {api,calls,stored}=await runtime(t,true);api.setServer('https://old.example');
+  api.setToken('old-token');api.setCompany('old-company');api.setServer('https://new.example');
+  assert.equal(api.authHeaders().Authorization,undefined);assert.deepEqual(api.companyHeader(),{});
+  assert.equal(stored.has('akis-token'),false);assert.equal(stored.get('akis-company'),'');
+  const reading=api.api('session');assert.equal(calls[0].url,'https://new.example/api/session');
+  assert.equal(calls[0].options.headers.Authorization,undefined);assert.equal(calls[0].options.headers['X-Akis-Company'],undefined);
+  calls[0].resolve(json({authenticated:false}));await reading;
+});
+test('reselecting the same canonical server keeps its current login',async t=>{
+  const {api,stored}=await runtime(t,true);api.setServer('https://example.com');
+  api.setToken('current-token');api.setCompany('current-company');api.setServer(' HTTPS://EXAMPLE.COM:443/ ');
+  assert.equal(api.authHeaders().Authorization,'Bearer current-token');assert.equal(stored.get('akis-company'),'current-company');
+});
+test('an invalid server change does not erase the working login or change its address',async t=>{
+  const {api,calls}=await runtime(t,true);api.setServer('https://example.com');api.setToken('current-token');
+  assert.throws(()=>api.setServer('https://user:secret@other.example'),/Sunucu adres/);
+  assert.equal(api.serverUrl(),'https://example.com');assert.equal(api.authHeaders().Authorization,'Bearer current-token');assert.equal(calls.length,0);
+});
+test('server health verification sends neither current credentials nor company and does not switch servers',async t=>{
+  const {api,calls}=await runtime(t,true);api.setServer('https://old.example');api.setToken('current-token');api.setCompany('current-company');
+  const checking=api.checkServer(' HTTPS://NEW.EXAMPLE:443/base/ ');
+  assert.equal(calls[0].url,'https://new.example/base/api/health');
+  assert.equal(calls[0].options.headers,undefined);assert.equal(calls[0].options.credentials,'omit');
+  calls[0].resolve(json({ok:true}));assert.equal(await checking,'https://new.example/base');
+  assert.equal(api.serverUrl(),'https://old.example');assert.equal(api.authHeaders().Authorization,'Bearer current-token');
+});
+test('only an explicit successful boolean health response validates a server',async t=>{
+  const {api,calls}=await runtime(t,true);
+  for(const payload of [null,{}, {ok:false},{ok:'true'},{ok:1}]){
+    const index=calls.length,checking=api.checkServer('https://example.com');
+    const rejected=assert.rejects(checking,/Bu adreste bir Akış sunucusu bulunamadı/);
+    calls[index].resolve(json(payload));await rejected;
+  }
+});
+test('server verification rejects unsafe input before making a network request',async t=>{
+  const {api,calls}=await runtime(t,true);
+  await assert.rejects(api.checkServer('https://example.com#token'),/Sunucu adres/);assert.equal(calls.length,0);
+});
 
 const uncertainWrite='İşlem sonucu doğrulanamadı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.';
 for(const method of ['POST','PUT','PATCH','delete'])for(const failure of ['network','invalid-json'])test(`${method} ${failure} reports an unconfirmed write without retrying`,async t=>{
