@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Layers3,ShieldCheck,UserPlus} from 'lucide-react';
+import PasswordField from './PasswordField';
 import {api,ApiError,roleNames,setCompany} from './api';
 import {locale,t} from './i18n';
 import {KeyedActions,LatestRequest} from './libraryRequests';
@@ -46,8 +47,8 @@ return <div className="login-screen"><div className="panel login-card"><div clas
 <label>{t('E-posta')}<input type="email" value={info.email} readOnly autoComplete="username"/></label>
 {!needsCode?<>
   {mode==='new'&&<label>{t('Ad Soyad · isteğe bağlı')}<input disabled={busy} value={name} onChange={e=>setName(e.target.value)} autoComplete="name" maxLength={120}/></label>}
-  <label>{t(mode==='new'?'Yeni parola · en az 10 karakter':'Akış parolan')}<input disabled={busy} type="password" required minLength={10} maxLength={300} autoComplete={mode==='new'?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>
-  {mode==='new'&&<label>{t('Yeni parola tekrar')}<input disabled={busy} type="password" required minLength={10} maxLength={300} autoComplete="new-password" value={again} onChange={e=>setAgain(e.target.value)}/></label>}
+  <PasswordField label={t(mode==='new'?'Yeni parola · en az 10 karakter':'Akış parolan')} disabled={busy} required minLength={10} maxLength={300} autoComplete={mode==='new'?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)}/>
+  {mode==='new'&&<PasswordField label={t('Yeni parola tekrar')} disabled={busy} required minLength={10} maxLength={300} autoComplete="new-password" value={again} onChange={e=>setAgain(e.target.value)}/>}
 </>:<><p className="field-help"><ShieldCheck size={15}/> {t('Doğrulama uygulamandaki 6 haneli kodu gir.')}</p><label>{t('Doğrulama kodu')}<input disabled={busy} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 \-]{6,12}" maxLength={12} autoFocus required value={code} onChange={e=>setCode(e.target.value)}/></label></>}
 <button className="primary" disabled={busy}>{t(busy?'Kontrol ediliyor…':'Daveti kabul et')}</button>
 {needsCode&&<button type="button" className="inline-link" disabled={busy} onClick={()=>{if(!actions.current.has('accept')){setNeedsCode(false);setCode('');setError('')}}}>{t('Geri dön')}</button>}

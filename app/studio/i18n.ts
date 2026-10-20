@@ -1,6 +1,9 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Parolayı göster':'Show password',
+  'Parolayı gizle':'Hide password',
+  'Oturum kontrol ediliyor…':'Checking your session…',
   'Sunucu adresine kullanıcı adı veya parola ekleme.':'Do not include a username or password in the server address.',
   'Sunucu adresini sorgu veya # bölümü olmadan gir.':'Enter the server address without query parameters or a fragment.',
   'Davet bilgileri alınamadı. Bağlantını kontrol edip tekrar dene.':'Invitation details could not be loaded. Check your connection and try again.',

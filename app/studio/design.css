@@ -166,6 +166,15 @@
 .error,.notice,.field-help,.delivery small,.library-labels .pill { overflow-wrap:anywhere; }
 .library-labels .pill { max-width:100%; white-space:normal; }
 .media-uploader .error { margin-top:12px; line-height:1.65; }
+.password-field { display:grid; gap:9px; min-width:0; }
+.password-control { position:relative; min-width:0; }
+.password-control input { padding-right:52px; margin-top:0; }
+.password-toggle { position:absolute; top:50%; right:3px; transform:translateY(-50%); display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:6px; color:var(--muted-foreground); background:transparent; }
+.password-toggle:hover:not(:disabled) { color:var(--accent-foreground); background:var(--accent); }
+.login-loading { display:flex; align-items:center; gap:10px; min-height:52px; color:var(--muted-foreground); line-height:1.6; }
+.login-loading svg { flex-shrink:0; }
+.login-screen { min-height:100dvh; }
+.login-card>.error { margin-top:18px; line-height:1.65; }
 .command-results button>span:nth-child(2) { min-width:0; overflow-wrap:anywhere; }
 @media (hover:none) {
   .calendar-day .icon-button { opacity:1; }
@@ -179,6 +188,9 @@
   .command-trigger>span,.command-trigger kbd { display:none; }
 }
 @media (max-width:600px) {
+  .login-card { padding:24px 20px; }
+  .login-card h1 { font-size:23px; overflow-wrap:anywhere; }
+  :root[data-theme] .login-card .primary { min-height:44px; }
   .command-menu { top:max(16px,env(safe-area-inset-top)); max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
   .command-search { padding:10px 12px; gap:8px; }
   .command-search kbd { display:none; }
