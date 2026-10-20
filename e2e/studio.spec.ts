@@ -247,6 +247,37 @@ for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled'
   await expect(modal).toBeHidden();expect(requests).toBe(2);
 });
 
+test('a confirmed approval with a failed refresh locks its old card and retry only reads',async({page})=>{
+  await page.goto('/');const ids:string[]=[];
+  for(const name of ['A','B']){
+    const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:`Confirmed approval refresh ${name}`,platforms:['x']}});
+    ids.push((await created.json()).id);
+  }
+  const snapshot=await (await page.request.get('/api/state')).json();
+  const posts=ids.map(id=>snapshot.posts.find((post:any)=>post.id===id));posts.forEach(post=>{post.status='pending_approval'});
+  let writes=0,reads=0,recovered=false,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/state',async route=>{
+    reads++;if(writes&&!recovered)return route.fulfill({status:503,json:{error:'Test list refresh unavailable'}});
+    if(recovered)await held;return route.fulfill({json:snapshot});
+  });
+  await page.route(`**/api/posts/${ids[0]}/approve`,route=>{
+    writes++;posts[0].status='processing';posts[0].updated_at+=1;return route.fulfill({json:{ok:true}});
+  });
+  await page.reload();await page.getByRole('button',{name:/^Gönderiler/}).click();await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  const row=page.locator('article').filter({hasText:posts[0].text}),other=page.locator('article').filter({hasText:posts[1].text});
+  await row.getByRole('button',{name:'Onayla',exact:true}).click();
+  const retry=page.getByRole('button',{name:'Listeyi yenile',exact:true});await expect(retry).toBeVisible();
+  await expect(row.getByRole('button',{name:'Onayla',exact:true})).toBeDisabled();
+  await expect(row.getByRole('button',{name:'Düzenle',exact:true})).toBeDisabled();
+  await expect(other.getByRole('button',{name:'Onayla',exact:true})).toBeEnabled();expect(writes).toBe(1);
+  const before=reads;recovered=true;
+  await retry.evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
+  await expect.poll(()=>reads).toBe(before+1);await expect(retry).toBeDisabled();expect(writes).toBe(1);
+  release();await expect(retry).toHaveCount(0);
+  await expect(row.getByRole('button',{name:'Onayla',exact:true})).toHaveCount(0);expect(writes).toBe(1);
+});
+
 test('post action failures remain on their own card and clear only after a new attempt or changed post',async({page})=>{
   await page.goto('/');const ids:string[]=[];
   for(const name of ['A','B']){
