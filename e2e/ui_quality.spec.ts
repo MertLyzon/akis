@@ -1,5 +1,29 @@
 import {expect,test} from '@playwright/test';
 
+test('empty library filters preserve their selected option and clear in one fresh read',async({page})=>{
+  const reads:URL[]=[];
+  const asset={id:'ui-library-filter',filename:'launch.png',folder:'Launch',tags:['important'],status:'ready',mime_type:'image/png',url:null,archived:false,width:100,height:100,size:10};
+  await page.route(/\/api\/media\?/,route=>{
+    const url=new URL(route.request().url());reads.push(url);
+    const filtered=['folder','tag','q'].some(key=>url.searchParams.get(key))||url.searchParams.get('archived')==='true';
+    return route.fulfill({json:{items:filtered?[]:[asset],folders:['Launch']}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  await expect(page.locator('.library-card')).toHaveCount(1);
+  const filters=page.locator('.library-filters'),tag=filters.getByRole('combobox',{name:'Etiket',exact:true});
+  await tag.selectOption('important');
+  await expect(page.getByRole('heading',{name:'Filtrelerine uyan medya yok.',exact:true})).toBeVisible();
+  await expect(tag).toHaveValue('important');await expect(tag.locator('option:checked')).toHaveText('important');
+  await filters.getByRole('combobox',{name:'Klasör',exact:true}).selectOption('Launch');
+  const search=filters.getByRole('searchbox',{name:'Dosya adında ara',exact:true});
+  await search.fill('missing');await expect.poll(()=>reads.at(-1)?.searchParams.get('q')).toBe('missing');
+  await expect(page.getByRole('heading',{name:'Filtrelerine uyan medya yok.',exact:true})).toBeVisible();
+  const before=reads.length;await page.getByRole('button',{name:'Filtreleri temizle',exact:true}).click();
+  await expect(page.locator('.library-card')).toHaveCount(1);expect(reads.length).toBe(before+1);
+  await expect(search).toBeFocused();await expect(search).toHaveValue('');await expect(tag).toHaveValue('');
+  await expect(page.locator('.library-results-summary')).toContainText('1 dosya gösteriliyor');
+});
+
 test('post filters announce results, reset locally and support keyboard navigation',async({page})=>{
   const state=await (await page.request.get('/api/state')).json();
   state.posts=[{id:'ui-post-a',status:'draft',text:'Visible draft',created:Date.now(),options:{},platforms:['x'],deliveries:[],asset:{id:'ui-ready',filename:'ready.png',status:'ready',mime_type:'image/png',url:null}},

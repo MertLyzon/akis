@@ -10,6 +10,7 @@ import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogDescription,DialogFo
 import {LibraryDraft,libraryDraft,libraryDraftChanged,applyLibraryMutation} from './libraryDraft';
 import {saveThenRefresh} from './settingsSave';
 import {useNavigationSafety} from './useNavigationSafety';
+import {libraryFilterOptions,libraryEmptyTitle} from './libraryFilters';
 
 export default function Library({can,maxMB,onUse,onBusy,picker=false}:any){
 const [uploadBusy,setUploadBusy]=useState(false);
@@ -23,6 +24,8 @@ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;requests.cu
 function uploadStatus(busy:boolean){setUploadBusy(busy);onBusy?.(busy)}
 const [items,setItems]=useState<any[]>([]),[folders,setFolders]=useState<string[]>([]),[folder,setFolder]=useState(''),[tag,setTag]=useState(''),[q,setQ]=useState(''),[search,setSearch]=useState(''),[archived,setArchived]=useState(false),[loading,setLoading]=useState(true);
 const [loadError,setLoadError]=useState(''),[reading,setReading]=useState(false),[loadedQuery,setLoadedQuery]=useState('');
+const searchInput=useRef<HTMLInputElement>(null);
+const searchPending=q.trim()!==search,filtered=!!(folder||tag||q.trim()||archived);
 const query=new URLSearchParams({folder,tag,q:search,archived:String(archived)}).toString();
 const currentFilters=useRef({folder,tag,archived});currentFilters.current={folder,tag,archived};
 // Search waits for a typing pause instead of querying on every keystroke.
@@ -46,12 +49,14 @@ function remove(){if(deleting)return mutate(deleting,{},'DELETE',t('Medya silind
 function openEditor(asset:any){if(actions.current.has(asset.id))return;const draft=libraryDraft(asset);setEditError('');setDiscardEdit(false);setEditing({asset:{id:asset.id,filename:asset.filename},draft,baseline:{...draft}})}
 function closeEditor(){if(editing&&actions.current.has(editing.asset.id))return;if(dirty)setDiscardEdit(true);else setEditing(null)}
 function saveEditor(event:any){event.preventDefault();if(editing){setEditError('');return save(editing.asset,{folder:editing.draft.folder,tags:editing.draft.tags.split(',')},t('Medya bilgileri kaydedildi.'))}}
-const tags=[...new Set(items.flatMap(a=>a.tags))].sort();
+function clearFilters(){setQ('');setSearch('');setFolder('');setTag('');setArchived(false);searchInput.current?.focus()}
+const tags=libraryFilterOptions(items.flatMap(a=>a.tags),tag),folderOptions=libraryFilterOptions(folders,folder);
 return <div className="library">{can('media')&&!picker&&<section className="panel library-upload"><MediaUpload asset={null} onUploaded={()=>latestLoad.current()} onRemove={()=>{}} onBusy={uploadStatus} maxMB={maxMB} multiple/></section>}
-<div className="library-filters"><label className="search-field"><Search size={15}/><input placeholder={t('Dosya adında ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><select value={folder} onChange={e=>setFolder(e.target.value)} aria-label={t('Klasör')}><option value="">{t('Tüm klasörler')}</option>{folders.map(f=><option key={f}>{f}</option>)}</select><select value={tag} onChange={e=>setTag(e.target.value)} aria-label={t('Etiket')}><option value="">{t('Tüm etiketler')}</option>{tags.map(tg=><option key={tg}>{tg}</option>)}</select>{!picker&&<label className="inline-options"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>{t('Arşiv')}</label>}</div>
+<div className="library-filters"><label className="search-field"><Search size={15} aria-hidden="true"/><input ref={searchInput} type="search" aria-label={t('Dosya adında ara')} placeholder={t('Dosya adında ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><select value={folder} onChange={e=>setFolder(e.target.value)} aria-label={t('Klasör')}><option value="">{t('Tüm klasörler')}</option>{folderOptions.map(f=><option key={f}>{f}</option>)}</select><select value={tag} onChange={e=>setTag(e.target.value)} aria-label={t('Etiket')}><option value="">{t('Tüm etiketler')}</option>{tags.map(tg=><option key={tg}>{tg}</option>)}</select>{!picker&&<label className="inline-options"><input type="checkbox" checked={archived} onChange={e=>setArchived(e.target.checked)}/>{t('Arşiv')}</label>}</div>
+<div className="library-results-summary"><span role="status" aria-live="polite">{t(searchPending?'Aranıyor…':reading?'Kütüphane yükleniyor…':loadError||loadedQuery!==query?'Güncel liste bekleniyor.':items.length>=500?'İlk {count} dosya gösteriliyor. Arama veya filtreyle daralt.':'{count} dosya gösteriliyor',{count:items.length})}</span>{filtered&&<button className="inline-link" type="button" onClick={clearFilters}>{t('Filtreleri temizle')}</button>}</div>
 {loadError&&<p className="error" role="alert">{t(loadError)} <button type="button" className="inline-link" disabled={reading} onClick={()=>void retryList()}>{t('Tekrar dene')}</button></p>}
 {!loading&&items.length>0&&loadedQuery!==query&&<p role="status">{t('Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.')}</p>}
-{loading?<div className="empty-state"><Loader2 className="spin"/>{t('Kütüphane yükleniyor…')}</div>:!items.length?<div className="empty-state"><Folder size={36}/><h3>{t(loadError?'Medya listesi alınamadı.':archived?'Arşiv boş.':'Kütüphanende henüz medya yok.')}</h3><p>{t(loadError?'Bağlantını kontrol edip tekrar dene.':'Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.')}</p></div>:
+{loading||searchPending?<div className="empty-state" aria-busy="true"><Loader2 className="spin" aria-hidden="true"/>{t('Kütüphane yükleniyor…')}</div>:!items.length?<div className="empty-state"><Folder size={36} aria-hidden="true"/><h3>{t(libraryEmptyTitle({folder,tag,q,archived},loadError))}</h3><p>{t(loadError?'Bağlantını kontrol edip tekrar dene.':filtered?'Dosya adını değiştir veya tüm dosyaları görmek için filtreleri temizle.':'Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.')}</p></div>:
 <div className="library-grid">{items.map(a=><article key={a.id} aria-busy={active.has(a.id)} className={'library-card '+(a.status==='failed'?'asset-failed':'')}>
 <div className="library-thumb">{a.url&&a.mime_type.startsWith('image')?<img src={mediaSrc(a.url)} alt={a.filename} loading="lazy" decoding="async"/>:a.url?<video src={mediaSrc(a.url)} muted preload="metadata"/>:a.status==='failed'?<FileVideo size={30}/>:<Loader2 className="spin" size={26}/>}{a.stored==='cloudinary'&&<span className="cloud-badge" title={t("Cloudinary'de saklanıyor")}><Cloud size={12}/></span>}</div>
 <div className="library-info"><strong title={a.filename}>{a.filename}</strong><small>{a.status==='ready'?`${a.width}×${a.height} · ${bytes(a.size)}`:a.status==='failed'?(a.error||t('Hazırlanamadı')):t('Hazırlanıyor…')}</small>
