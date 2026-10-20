@@ -1,8 +1,9 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
-import {FileVideo,Folder,Tag,Archive,Trash2,Send,Search,Loader2,Cloud} from 'lucide-react';
+import {Folder,Tag,Archive,Trash2,Send,Search,Loader2,Cloud} from 'lucide-react';
 import {toast} from 'sonner';
-import {api,bytes,mediaSrc} from './api';
+import {api,bytes} from './api';
+import MediaPreview from './MediaPreview';
 import MediaUpload from './MediaUpload';
 import {t} from './i18n';
 import {KeyedActions,LatestRequest} from './libraryRequests';
@@ -58,7 +59,7 @@ return <div className="library">{can('media')&&!picker&&<section className="pane
 {!loading&&items.length>0&&loadedQuery!==query&&<p role="status">{t('Önceki filtrenin sonuçları gösteriliyor. Güncel liste için tekrar dene.')}</p>}
 {loading||searchPending?<div className="empty-state" aria-busy="true"><Loader2 className="spin" aria-hidden="true"/>{t('Kütüphane yükleniyor…')}</div>:!items.length?<div className="empty-state"><Folder size={36} aria-hidden="true"/><h3>{t(libraryEmptyTitle({folder,tag,q,archived},loadError))}</h3><p>{t(loadError?'Bağlantını kontrol edip tekrar dene.':filtered?'Dosya adını değiştir veya tüm dosyaları görmek için filtreleri temizle.':'Yüklediğin görseller ve videolar burada toplanır; tekrar yüklemeden yeni içeriklerde kullanabilirsin.')}</p></div>:
 <div className="library-grid">{items.map(a=><article key={a.id} aria-busy={active.has(a.id)} className={'library-card '+(a.status==='failed'?'asset-failed':'')}>
-<div className="library-thumb">{a.url&&a.mime_type.startsWith('image')?<img src={mediaSrc(a.url)} alt={a.filename} loading="lazy" decoding="async"/>:a.url?<video src={mediaSrc(a.url)} muted preload="metadata"/>:a.status==='failed'?<FileVideo size={30}/>:<Loader2 className="spin" size={26}/>}{a.stored==='cloudinary'&&<span className="cloud-badge" title={t("Cloudinary'de saklanıyor")}><Cloud size={12}/></span>}</div>
+<div className="library-thumb"><MediaPreview asset={a} compact/>{a.stored==='cloudinary'&&<span className="cloud-badge" title={t("Cloudinary'de saklanıyor")}><Cloud size={12}/></span>}</div>
 <div className="library-info"><strong title={a.filename}>{a.filename}</strong><small>{a.status==='ready'?`${a.width}×${a.height} · ${bytes(a.size)}`:a.status==='failed'?(a.error||t('Hazırlanamadı')):t('Hazırlanıyor…')}</small>
 <div className="library-labels">{a.folder&&<span className="pill"><Folder size={11}/>{a.folder}</span>}{a.tags.map((t:string)=><span key={t} className="pill"><Tag size={11}/>{t}</span>)}</div>
 <div className="library-actions">{active.has(a.id)&&<span role="status"><Loader2 size={14} className="spin"/>{t('İşlem sürüyor…')}</span>}{a.status==='ready'&&onUse&&<button className="primary" disabled={uploadBusy||active.has(a.id)} onClick={()=>onUse(a)}><Send size={14}/>{t(picker?'Seç':'Yeni içerikte kullan')}</button>}{can('media')&&!picker&&<><button className="icon-button" disabled={active.has(a.id)} title={t('Klasör ve etiket')} aria-label={t('Klasör ve etiket düzenle')} onClick={()=>openEditor(a)}><Tag size={15}/></button><button className="icon-button" disabled={active.has(a.id)} title={t(a.archived?'Arşivden çıkar':'Arşivle')} aria-label={t(a.archived?'Arşivden çıkar':'Arşivle')} onClick={()=>save(a,{archived:!a.archived},t(a.archived?'Arşivden çıkarıldı.':'Arşivlendi.'))}><Archive size={15}/></button><button className="icon-button" disabled={active.has(a.id)} title={t('Sil')} aria-label={t('Sil')} onClick={()=>{if(!actions.current.has(a.id))setDeleting(a)}}><Trash2 size={15}/></button></>}</div></div></article>)}</div>}

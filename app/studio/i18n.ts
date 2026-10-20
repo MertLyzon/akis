@@ -1,6 +1,12 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Önizleme yüklenemedi.':'The preview could not be loaded.',
+  'Önizleme bağlantısı yok.':'No preview URL is available.',
+  'Bu yalnızca önizleme hatasıdır; dosya kaydı değiştirilmedi.':'This is only a preview error; the file record has not been changed.',
+  'Dosya hazır olduğunda önizleme burada görünecek.':'The preview will appear here when the file is ready.',
+  'Dosyanın durumunu medya kütüphanesinden kontrol edebilirsin.':'You can check the file status in the media library.',
+  'Önizlemeyi tekrar dene':'Retry preview',
   'Ana içeriğe geç':'Skip to main content',
   'Menüyü aç veya kapat':'Toggle navigation menu',
   'Son başarılı güncelleme':'Last successful update',

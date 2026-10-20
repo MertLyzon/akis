@@ -1,5 +1,22 @@
 import {expect,test} from '@playwright/test';
 
+test('failed media previews stop retrying automatically and a ready asset without URL is not processing',async({page})=>{
+  let previews=0;const writes:string[]=[];
+  const broken={id:'ui-broken-preview',filename:'broken.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:'/test-preview/broken.png',archived:false,width:100,height:100,size:10};
+  const missing={...broken,id:'ui-missing-preview',filename:'missing-url.png',url:null};
+  await page.route(/\/api\/media\?/,route=>route.fulfill({json:{items:[broken,missing],folders:[]}}));
+  await page.route('**/test-preview/broken.png',route=>{previews++;return route.fulfill({status:404,body:'Missing image'})});
+  await page.route(/\/api\/media(?:\/[^?]+)?$/,route=>{writes.push(route.request().method());return route.fulfill({json:{ok:true}})});
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  const brokenCard=page.locator('.library-card').filter({hasText:'broken.png'}),missingCard=page.locator('.library-card').filter({hasText:'missing-url.png'});
+  await expect(brokenCard.getByText('Önizleme yüklenemedi.',{exact:true})).toBeVisible();
+  await expect(missingCard.getByText('Önizleme bağlantısı yok.',{exact:true})).toBeVisible();
+  await expect(missingCard.locator('.spin')).toHaveCount(0);expect(previews).toBe(1);
+  await brokenCard.getByRole('button',{name:'Önizlemeyi tekrar dene',exact:true}).click();
+  await expect(brokenCard.getByText('Önizleme yüklenemedi.',{exact:true})).toBeVisible();
+  expect(writes).toEqual([]);
+});
+
 test('main content has one landmark and a keyboard skip link without changing the invitation hash',async({page})=>{
   await page.goto('/');await expect(page.locator('#content')).toBeVisible();
   await expect(page.getByRole('main')).toHaveCount(1);
