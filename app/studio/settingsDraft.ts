@@ -14,3 +14,6 @@ export function mergeSettingsDraft(current:SettingsDraft,previous:SettingsDraft,
 export function settingsDraftChanged(current:SettingsDraft,saved:SettingsDraft,secret:string){
   return !!secret||current.client!==saved.client||current.redirect!==saved.redirect||current.mode!==saved.mode;
 }
+export function settingsSaveNeeded(configured:boolean,current:SettingsDraft,saved:SettingsDraft,secret:string){
+  return !configured||settingsDraftChanged(current,saved,secret);
+}
