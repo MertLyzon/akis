@@ -1,5 +1,26 @@
 import {expect,test} from '@playwright/test';
 
+test('post filters announce results, reset locally and support keyboard navigation',async({page})=>{
+  const state=await (await page.request.get('/api/state')).json();
+  state.posts=[{id:'ui-post-a',status:'draft',text:'Visible draft',created:Date.now(),options:{},platforms:['x'],deliveries:[],asset:{id:'ui-ready',filename:'ready.png',status:'ready',mime_type:'image/png',url:null}},
+    {id:'ui-post-b',status:'scheduled',text:'Scheduled draft',created:Date.now(),options:{},platforms:['x'],deliveries:[]}];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.goto('/');await page.getByRole('button',{name:/^Gönderiler/}).click();
+  const filters=page.getByRole('tablist',{name:'İçerik filtreleri',exact:true});
+  await expect(page.locator('.post-results-summary')).toContainText('2 / 2 içerik gösteriliyor');
+  await expect(page.locator('.post-media small')).toHaveText('Hazır');
+  const search=page.getByRole('searchbox',{name:'İçeriklerde ara',exact:true});
+  await search.fill('not-found');await expect(page.getByRole('heading',{name:'Aramana uyan içerik yok.',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Filtreleri temizle',exact:true}).click();
+  await expect(search).toHaveValue('');await expect(search).toBeFocused();await expect(page.locator('.post-item')).toHaveCount(2);
+  await filters.getByRole('tab',{name:'Tümü',exact:true}).press('End');
+  await expect(filters.getByRole('tab',{name:'Taslak / reddedilen',exact:true})).toBeFocused();
+  await expect(page.locator('.post-item')).toHaveCount(1);
+  await filters.getByRole('tab',{name:'Taslak / reddedilen',exact:true}).press('ArrowRight');
+  await expect(filters.getByRole('tab',{name:'Tümü',exact:true})).toBeFocused();
+  await expect(page.locator('.post-item')).toHaveCount(2);
+});
+
 test('password visibility is explicit, never submits the form and resets after clearing or submitting',async({page})=>{
   let logins=0,release!:()=>void;
   const held=new Promise<void>(resolve=>{release=resolve});
