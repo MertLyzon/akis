@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {Link2,RefreshCw,ShieldCheck,Clock3} from 'lucide-react';
+import {Link2,RefreshCw,ShieldCheck,Clock3,AlertTriangle} from 'lucide-react';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {toast} from 'sonner';
 import {platforms,api,dateInput,isApp,serverUrl,openExternal} from './api';
@@ -9,8 +9,12 @@ import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh,refreshWithWarning} from './settingsSave';
 import {ConnectionDraft,connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
 import {useNavigationSafety} from './useNavigationSafety';
+import {connectionStatus} from './connectionStatus';
 
-export default function Connections({connections,settings,refresh,onSettings}:any){return <><div className="connection-banner"><ShieldCheck/><div><strong>{t('Bağlantıların kontrol altında.')}</strong><p>{t('Erişim ve yenileme anahtarları şifreli saklanır. Desteklenen hesaplar arka planda yenilenir.')}</p></div></div><div className="connection-grid">{platforms.map(p=><Connection key={p.id} p={p} saved={connections.find((c:any)=>c.platform===p.id)} app={settings.oauth_apps?.find((a:any)=>a.platform===p.id)} refresh={refresh} onSettings={onSettings}/>)}</div></>}
+export default function Connections({connections,settings,refresh,onSettings}:any){
+const saved=platforms.map(p=>connections.find((c:any)=>c.platform===p.id)).filter(Boolean);
+const attention=saved.filter(connection=>connectionStatus(connection).attention).length;
+return <><div className={'connection-banner '+(attention?'is-warning':'')}>{attention?<AlertTriangle aria-hidden="true"/>:<ShieldCheck aria-hidden="true"/>}<div><strong>{t(attention?'{count} bağlantı kontrol gerektiriyor.':saved.length?'{count} platform hesabı kayıtlı.':'Henüz hesap bağlı değil.',{count:attention||saved.length})}</strong><p>{t(attention?'Aşağıdaki uyarıları incele. Gerekiyorsa hesabı yeniden bağla; kayıtlı olması erişimin hâlâ geçerli olduğunu garanti etmez.':'Erişim ve yenileme anahtarları şifreli saklanır. Desteklenen hesaplar arka planda yenilenir.')}</p></div></div><div className="connection-grid">{platforms.map(p=><Connection key={p.id} p={p} saved={connections.find((c:any)=>c.platform===p.id)} app={settings.oauth_apps?.find((a:any)=>a.platform===p.id)} refresh={refresh} onSettings={onSettings}/>)}</div></>}
 
 function fields(saved:any):ConnectionDraft{return {account:saved?.account||'',label:saved?.label||'',expiry:dateInput(saved?.expires_at),refreshExpiry:dateInput(saved?.refresh_expires_at),long:saved?.token_kind==='long_lived'}}
 function Connection({p,saved,app,refresh,onSettings}:any){
@@ -21,6 +25,7 @@ const [oauthRefreshing,setOAuthRefreshing]=useState(false),[oauthRefreshFailed,s
 const reportPending=useNavigationSafety(undefined,false,connectionDraftChanged(draft,baseline,token,refreshToken));
 latestRefresh.current=refresh;
 const locked=busy||oauthOpen||oauthRefreshing;
+const status=connectionStatus(saved);
 function syncPending(){reportPending(operationPending.current||oauthResultPending.current||!!(popup.current&&!popup.current.closed))}
 function edit<K extends keyof ConnectionDraft>(key:K,value:ConnectionDraft[K]){setDraft(current=>({...current,[key]:value}))}
 function closePopup(){const current=popup.current;popup.current=null;try{current?.close()}catch{};if(mounted.current){setOAuthOpen(false);syncPending()}}
@@ -76,8 +81,8 @@ return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshTo
 function remove(){return commit(()=>api('connections',{platform:p.id},'DELETE'),'Bağlantı kaldırıldı.',()=>{const empty=fields(null);previous.current=empty;setBaseline(empty);setDraft(empty);setToken('');setRefreshToken('');setRemoving(false)})}
 
 return <section className="panel connection" aria-busy={locked}>
-<div className="connection-heading"><span className="platform-icon large" style={{background:p.color}}>{p.symbol}</span><div><h2>{p.name}</h2><p>{saved?.label||t(p.hint)}</p></div><span className={'pill '+(saved?'saved':'')}>{t(saved?'Bağlı':'Bağlanmadı')}</span></div>
-{saved&&<div className={'expiry '+(saved.days_left!==null&&saved.days_left<=7?'expiry-warn':'')}><Clock3 size={17}/><div><strong>{saved.days_left===null?t('Bitiş tarihi belirtilmedi'):saved.days_left<=0?t('Bağlantının süresi doldu'):t('Bağlantı {days} gün sonra sona erecek',{days:saved.days_left})}</strong><p>{t(saved.can_refresh?'Otomatik yenileme açık.':'Otomatik yenileme yok; gerektiğinde yeniden bağlan.')}</p>{saved.refresh_error&&<p className="warn">{t(saved.refresh_error)}</p>}</div></div>}
+<div className="connection-heading"><span className="platform-icon large" style={{background:p.color}}>{p.symbol}</span><div><h2>{p.name}</h2><p>{saved?.label||t(p.hint)}</p></div><span className={'pill connection-state-'+status.tone}>{t(status.label)}</span></div>
+{saved&&<div className={'expiry '+(status.attention?'expiry-warn':'')}><Clock3 size={17}/><div><strong>{saved.days_left==null?t('Bitiş tarihi belirtilmedi'):saved.days_left<=0?t('Bağlantının süresi doldu'):t('Bağlantı {days} gün sonra sona erecek',{days:saved.days_left})}</strong><p>{t(saved.can_refresh?'Otomatik yenileme açık.':'Otomatik yenileme yok; gerektiğinde yeniden bağlan.')}</p>{saved.refresh_error&&<p className="warn">{t(saved.refresh_error)}</p>}</div></div>}
 <div className="oauth-actions"><button className="primary" disabled={locked} onClick={connect}><Link2 size={16}/>{t(saved?'Yeniden bağlan':'Hesapla bağlan')}</button>{saved?.can_refresh&&<button className="secondary" disabled={locked} onClick={()=>commit(()=>api('connections/refresh',{platform:p.id}),'Yenileme kontrolü tamamlandı.')}><RefreshCw size={15}/>{t('Yenile')}</button>}</div>
 {oauthOpen&&<p role="status">{t('Hesap bağlantısı açılan pencerede bekleniyor.')} <button className="inline-link" type="button" onClick={closePopup}>{t('Bağlantı penceresini kapat')}</button></p>}
 {oauthRefreshing&&<p role="status">{t('Bağlantı durumu kontrol ediliyor…')}</p>}

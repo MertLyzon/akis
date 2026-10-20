@@ -180,6 +180,18 @@
 .error,.notice,.field-help,.delivery small,.library-labels .pill { overflow-wrap:anywhere; }
 .library-labels .pill { max-width:100%; white-space:normal; }
 .media-uploader .error { margin-top:12px; line-height:1.65; }
+.connection-heading>div { flex:1; min-width:0; }
+.connection-heading p,.connection .expiry { overflow-wrap:anywhere; }
+.connection-heading>.pill { flex-shrink:0; white-space:normal; }
+:root[data-theme] .connection-state-saved { background:#e7f6ed; color:#216644; }
+:root[data-theme] .connection-state-warning { background:#fff2d6; color:#795410; }
+:root[data-theme] .connection-state-danger { background:#fce8eb; color:#a73349; }
+:root[data-theme] .connection-banner.is-warning { background:#fff7e5; border-color:#e4c98e; }
+:root[data-theme=dark] .connection-state-saved { background:#1d392c; color:#9ce0b9; }
+:root[data-theme=dark] .connection-state-warning { background:#3b301c; color:#f0ce86; }
+:root[data-theme=dark] .connection-state-danger { background:#40232c; color:#ffb0bd; }
+:root[data-theme=dark] .connection-banner.is-warning { background:#30291e; border-color:#5f4b2c; }
+.connection-banner.is-warning>svg { color:var(--foreground); }
 .post-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:12px 20px; border-bottom:1px solid var(--border); color:var(--muted-foreground); background:var(--surface-subtle); font-size:12px; }
 .post-results-summary .inline-link { min-height:32px; }
 .library-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-height:44px; margin:-6px 0 14px; color:var(--muted-foreground); font-size:12px; }
@@ -208,6 +220,9 @@
   .command-trigger>span,.command-trigger kbd { display:none; }
 }
 @media (max-width:600px) {
+  .connection-heading>.pill { margin-left:0; }
+  .oauth-actions>button { flex:1 1 150px; }
+  :root[data-theme] .connection :is(.oauth-actions button,.connection-actions button) { min-height:44px; }
   .calendar-viewbar { padding:10px 16px; }
   .calendar-view-switch button { min-height:44px; }
   .post-results-summary { padding:10px 16px; }

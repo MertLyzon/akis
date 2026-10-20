@@ -1,5 +1,22 @@
 import {expect,test} from '@playwright/test';
 
+test('connection cards distinguish expired, renewal-error and expiring accounts without extra checks',async({page})=>{
+  const state=await (await page.request.get('/api/state')).json();
+  state.connections=[{id:'ui-expired',platform:'x',label:'Expired account',days_left:0,expires_at:null,can_refresh:false},
+    {id:'ui-renewal',platform:'instagram',label:'Renewal failed',days_left:null,expires_at:null,refresh_error:'Renewal needs attention',can_refresh:false},
+    {id:'ui-soon',platform:'tiktok',label:'Expiring account',days_left:7,expires_at:null,can_refresh:true}];
+  let checks=0;
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.route('**/api/connections/refresh',route=>{checks++;return route.fulfill({json:{ok:true}})});
+  await page.goto('/');await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+  await expect(page.locator('.connection-banner')).toContainText('3 bağlantı kontrol gerektiriyor.');
+  await expect(page.locator('.connection').filter({hasText:'Expired account'}).locator('.connection-heading')).toContainText('Süresi doldu');
+  await expect(page.locator('.connection').filter({hasText:'Renewal failed'}).locator('.connection-heading')).toContainText('Kontrol gerekiyor');
+  await expect(page.locator('.connection').filter({hasText:'Expiring account'}).locator('.connection-heading')).toContainText('Yakında doluyor');
+  await expect(page.locator('.connection-heading').filter({hasText:'WhatsApp'})).toContainText('Bağlanmadı');
+  expect(checks).toBe(0);
+});
+
 test('calendar offers a desktop agenda and today opens at a future company-local hour',async({page})=>{
   await page.clock.setFixedTime(new Date('2026-10-20T13:42:00Z'));
   const state=await (await page.request.get('/api/state')).json();state.company.timezone='Europe/Istanbul';

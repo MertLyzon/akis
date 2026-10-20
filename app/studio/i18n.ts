@@ -1,6 +1,12 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Süresi doldu':'Expired',
+  'Yakında doluyor':'Expiring soon',
+  '{count} bağlantı kontrol gerektiriyor.':'{count} connections need attention.',
+  '{count} platform hesabı kayıtlı.':'{count} platform accounts are saved.',
+  'Henüz hesap bağlı değil.':'No accounts connected yet.',
+  'Aşağıdaki uyarıları incele. Gerekiyorsa hesabı yeniden bağla; kayıtlı olması erişimin hâlâ geçerli olduğunu garanti etmez.':'Review the warnings below. Reconnect the account if needed; saved credentials do not guarantee that access is still valid.',
   'Takvim görünümü':'Calendar view',
   'Ay görünümü':'Month view',
   'Liste görünümü':'List view',
