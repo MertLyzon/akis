@@ -9,6 +9,8 @@ import {useNavigationSafety} from './useNavigationSafety';
 import {saveThenRefresh} from './settingsSave';
 import {postFilters,filterPosts,matchesPost,nextPostFilter,postMediaStatus} from './postFilters';
 import {postActionFailure} from './postActionFailure';
+import {PostReadBarrier} from './postReadBarrier';
+import {KeyedActions} from './libraryRequests';
 
 export default function Posts({posts,loading,refresh,can,tz,onEdit,onDuplicate,initialFilter='all'}:any){
 const [filter,setFilter]=useState(initialFilter),[q,setQ]=useState('');
@@ -19,20 +21,26 @@ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false}},[]);
 const [active,setActive]=useState(new Set<string>()),[confirmation,setConfirmation]=useState<{post:any;kind:'reject'|'cancel'|'delete'}|null>(null),[note,setNote]=useState('');
 const [confirmationError,setConfirmationError]=useState(''),[confirmationStale,setConfirmationStale]=useState(false);
 const [actionErrors,setActionErrors]=useState<Record<string,ReturnType<typeof postActionFailure>&{updatedAt:unknown}>>({});
+const barrier=useRef(new PostReadBarrier()),reads=useRef(new KeyedActions());
+const [blocked,setBlocked]=useState(new Set<string>()),[reading,setReading]=useState(false);
+const locked=(id:string)=>active.has(id)||blocked.has(id);
+function syncBarrier(){if(mounted.current)setBlocked(new Set(barrier.current.snapshot().keys()))}
+async function readPosts(){const before=barrier.current.snapshot();const result=await refresh();if(result!==false&&mounted.current){barrier.current.confirm(before);syncBarrier()}return result}
+async function reload(){return reads.current.run('list',async()=>{setReading(true);try{if(await readPosts()===false&&mounted.current)toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}catch{if(mounted.current)toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}finally{if(mounted.current)setReading(false)}})}
 const confirmationBusy=!!confirmation&&active.has(confirmation.post.id);
 const needle=q.trim().toLocaleLowerCase('tr');
 const shown=useMemo(()=>filterPosts(posts,filter,q),[posts,filter,q]);
 const stats=useMemo(()=>[{label:'Toplam içerik',value:posts.length},{label:'Onay bekleyen',value:posts.filter((p:any)=>p.status==='pending_approval').length},{label:'Planlı',value:posts.filter((p:any)=>p.status==='scheduled').length},{label:'Kontrol gerekiyor',value:posts.filter((p:any)=>matchesPost(p,'attention')).length}],[posts]);
 async function act(id:string,path:string,body:any,done:string,method?:string){
-if(inFlight.current.has(id))return false;
+if(inFlight.current.has(id)||barrier.current.has(id))return false;
 inFlight.current.add(id);reportPending(true);setActive(new Set(inFlight.current));
 setActionErrors(current=>{const next={...current};delete next[id];return next});
-const refreshFailed=()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))};
-try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)return await refresh()},refreshFailed});return true}
+const refreshFailed=()=>{if(mounted.current){barrier.current.hold(id);syncBarrier();toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}};
+try{await saveThenRefresh({save:()=>api(path,body,method),saved:()=>{if(mounted.current)toast.success(done)},refresh:async()=>{if(mounted.current)return await readPosts()},refreshFailed});return true}
 catch(e:any){if(mounted.current){const failure=postActionFailure(e);setActionErrors(current=>({...current,[id]:{...failure,updatedAt:posts.find((post:any)=>post.id===id)?.updated_at}}));toast.error(t(failure.message));if(confirmation?.post.id===id){setConfirmationError(failure.message);setConfirmationStale(e.status===409||e.status===404)}if(e.status===409||e.status===404)try{await refresh()}catch{toast.warning(t('Gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}}return false}
 finally{inFlight.current.delete(id);if(mounted.current){reportPending(inFlight.current.size>0);setActive(new Set(inFlight.current))}}
 }
-function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
+function ask(post:any,kind:'reject'|'cancel'|'delete'){if(inFlight.current.has(post.id)||barrier.current.has(post.id))return;setNote('');setConfirmationError('');setConfirmationStale(false);setConfirmation({post,kind})}
 async function confirmAction(){
 if(!confirmation||confirmationStale)return;
 const {post,kind}=confirmation;
@@ -42,7 +50,8 @@ const ok=await act(post.id,`posts/${post.id}${kind==='delete'?'':'/'+kind}`,{exp
 if(ok&&mounted.current)setConfirmation(null);
 }
 return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.label}><span>{t(s.label)}</span><strong>{s.value}</strong></div>)}</div>
-<section className="panel"><div className="panel-head"><div className="filter-tabs" role="tablist" aria-label={t('İçerik filtreleri')}>{postFilters.map(f=><button key={f.id} id={`${filterId}-${f.id}`} type="button" role="tab" aria-selected={filter===f.id} aria-controls={`${filterId}-results`} tabIndex={filter===f.id?0:-1} className={filter===f.id?'active':''} onClick={()=>setFilter(f.id)} onKeyDown={event=>{const next=nextPostFilter(f.id,event.key);if(next){event.preventDefault();setFilter(next);document.getElementById(`${filterId}-${next}`)?.focus()}}}>{t(f.name)}</button>)}</div><label className="search-field"><Search size={15} aria-hidden="true"/><input ref={searchInput} type="search" placeholder={t('İçeriklerde ara')} aria-label={t('İçeriklerde ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><button className="secondary" disabled={loading} onClick={refresh}><RefreshCw size={14}/>{t('Yenile')}</button></div>
+{blocked.size>0&&<p className="error" role="alert">{t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.')} <button type="button" disabled={reading||loading} onClick={()=>void reload()}>{t('Listeyi yenile')}</button></p>}
+<section className="panel"><div className="panel-head"><div className="filter-tabs" role="tablist" aria-label={t('İçerik filtreleri')}>{postFilters.map(f=><button key={f.id} id={`${filterId}-${f.id}`} type="button" role="tab" aria-selected={filter===f.id} aria-controls={`${filterId}-results`} tabIndex={filter===f.id?0:-1} className={filter===f.id?'active':''} onClick={()=>setFilter(f.id)} onKeyDown={event=>{const next=nextPostFilter(f.id,event.key);if(next){event.preventDefault();setFilter(next);document.getElementById(`${filterId}-${next}`)?.focus()}}}>{t(f.name)}</button>)}</div><label className="search-field"><Search size={15} aria-hidden="true"/><input ref={searchInput} type="search" placeholder={t('İçeriklerde ara')} aria-label={t('İçeriklerde ara')} value={q} onChange={e=>setQ(e.target.value)}/></label><button className="secondary" disabled={loading||reading} onClick={()=>void reload()}><RefreshCw size={14}/>{t('Yenile')}</button></div>
 {!loading&&<div className="post-results-summary"><span role="status" aria-live="polite">{t('{shown} / {total} içerik gösteriliyor',{shown:shown.length,total:posts.length})}</span>{(needle||filter!=='all')&&<button type="button" className="inline-link" onClick={()=>{setQ('');setFilter('all');searchInput.current?.focus()}}>{t('Filtreleri temizle')}</button>}</div>}
 <div id={`${filterId}-results`} role="tabpanel" aria-labelledby={`${filterId}-${filter}`} tabIndex={0}>
 {loading?<div className="empty-state" role="status"><Loader2 className="spin" size={24} aria-hidden="true"/>{t('Gönderiler yükleniyor…')}</div>:!shown.length?<div className="empty-state"><FileText size={36} aria-hidden="true"/><h3>{t(needle?'Aramana uyan içerik yok.':filter==='all'?'İlk paylaşımına yer ayırdık.':'Bu listede içerik yok.')}</h3><p>{t(needle||filter!=='all'?'Aramayı değiştir veya tüm içerikleri görmek için filtreleri temizle.':'Taslaklar, onaylar ve gönderim sonuçları burada görünecek.')}</p></div>:shown.map((p:any)=><article key={p.id} className="post-item" aria-busy={active.has(p.id)}>
@@ -53,14 +62,14 @@ return <><div className="stats">{stats.map(s=><div className="stat-card" key={s.
 <div className="post-channels">{p.platforms.map((id:string)=><span key={id} className="pill">{platforms.find(x=>x.id===id)?.name}</span>)}</div>
 {p.deliveries.length>0&&<div className="delivery-list">{p.deliveries.map((d:any)=><div key={d.id} className={'delivery '+d.status}><div className="delivery-heading"><strong>{platforms.find(x=>x.id===d.platform)?.name}</strong><span>{t(statuses[d.status]||d.status)}</span></div>{d.recipient&&<small>{t('Alıcı')}: {d.recipient}</small>}{d.status==='pending'&&d.next_attempt_at>Math.floor(Date.now()/1000)&&<small>{t('Sıradaki deneme')}: {inZone(d.next_attempt_at,tz)}</small>}{d.media_note&&<small className="media-note">{d.media_note}</small>}{d.error&&<small>{d.error}</small>}{d.error_code&&<small className="error-code">{t('Kod')}: {d.error_code}</small>}{d.retry_count>0&&<small>{t('Otomatik tekrar')}: {d.retry_count}/3</small>}{d.externalId&&<small className="external-id">{t('İşlem')}: {d.externalId}</small>}
 {d.attempts.length>0&&<details className="attempts"><summary><History size={13}/>{d.attempts_total??d.attempts.length} {t('deneme')}{(d.attempts_total??0)>d.attempts.length?` · ${t('son')} ${d.attempts.length}`:''}</summary><ol>{d.attempts.map((a:any,i:number)=><li key={i}><span>{inZone(a.started_at,tz,{dateStyle:'short',timeStyle:'medium'})}</span><strong>{t(outcomes[a.outcome]||a.outcome)}</strong><span>{t(stages[a.stage]||a.stage)}</span>{a.error_code&&<code>{a.error_code}</code>}{a.error&&<em>{t(a.error)}</em>}</li>)}</ol></details>}
-{d.status==='failed'&&can('approve')&&<button className="secondary" disabled={active.has(p.id)} onClick={()=>act(p.id,'retry',{delivery_id:d.id},t('Yeniden kuyruğa alındı.'))}>{t('Tekrar dene')}</button>}</div>)}</div>}
+{d.status==='failed'&&can('approve')&&<button className="secondary" disabled={locked(p.id)} onClick={()=>act(p.id,'retry',{delivery_id:d.id},t('Yeniden kuyruğa alındı.'))}>{t('Tekrar dene')}</button>}</div>)}</div>}
 {actionErrors[p.id]&&actionErrors[p.id].updatedAt===p.updated_at&&confirmation?.post.id!==p.id&&<p className="error" role="alert">{t(actionErrors[p.id].message)}{actionErrors[p.id].uncertain&&<span className="block">{t('İstek sunucuda tamamlanmış olabilir. Yeniden denemeden önce listeyi yenile.')}</span>}</p>}
 <div className="post-actions">{active.has(p.id)&&<span role="status"><Loader2 size={14} className="spin"/> {t('İşlem sürüyor…')}</span>}
-{p.status==='pending_approval'&&can('approve')&&<><button className="primary" disabled={active.has(p.id)} onClick={()=>act(p.id,`posts/${p.id}/approve`,{expected_updated_at:p.updated_at},t(p.scheduled_at?'Onaylandı, planlanan zamanda gönderilecek.':'Onaylandı, gönderim başladı.'))}><Check size={15}/>{t('Onayla')}</button><button className="secondary" disabled={active.has(p.id)} onClick={()=>ask(p,'reject')}><X size={15}/>{t('Reddet')}</button></>}
-{['draft','rejected','pending_approval'].includes(p.status)&&can('compose')&&<button className="secondary" disabled={active.has(p.id)} onClick={()=>onEdit(p)}><Pencil size={14}/>{t('Düzenle')}</button>}
-{p.status==='scheduled'&&can('approve')&&<button className="secondary" disabled={active.has(p.id)} onClick={()=>ask(p,'cancel')}><CalendarClock size={14}/>{t('Planı iptal et')}</button>}
-{onDuplicate&&<button className="secondary" title={t('Bu içeriğin kopyasıyla yeni taslak başlat')} disabled={active.has(p.id)} onClick={()=>onDuplicate(p)}><Copy size={14}/>{t('Kopyala')}</button>}
-{['draft','rejected'].includes(p.status)&&can('compose')&&<button className="text-button" disabled={active.has(p.id)} onClick={()=>ask(p,'delete')}><Trash2 size={14}/>{t('Sil')}</button>}
+{p.status==='pending_approval'&&can('approve')&&<><button className="primary" disabled={locked(p.id)} onClick={()=>act(p.id,`posts/${p.id}/approve`,{expected_updated_at:p.updated_at},t(p.scheduled_at?'Onaylandı, planlanan zamanda gönderilecek.':'Onaylandı, gönderim başladı.'))}><Check size={15}/>{t('Onayla')}</button><button className="secondary" disabled={locked(p.id)} onClick={()=>ask(p,'reject')}><X size={15}/>{t('Reddet')}</button></>}
+{['draft','rejected','pending_approval'].includes(p.status)&&can('compose')&&<button className="secondary" disabled={locked(p.id)} onClick={()=>onEdit(p)}><Pencil size={14}/>{t('Düzenle')}</button>}
+{p.status==='scheduled'&&can('approve')&&<button className="secondary" disabled={locked(p.id)} onClick={()=>ask(p,'cancel')}><CalendarClock size={14}/>{t('Planı iptal et')}</button>}
+{onDuplicate&&<button className="secondary" title={t('Bu içeriğin kopyasıyla yeni taslak başlat')} disabled={locked(p.id)} onClick={()=>onDuplicate(p)}><Copy size={14}/>{t('Kopyala')}</button>}
+{['draft','rejected'].includes(p.status)&&can('compose')&&<button className="text-button" disabled={locked(p.id)} onClick={()=>ask(p,'delete')}><Trash2 size={14}/>{t('Sil')}</button>}
 </div></article>)}</div></section>
 <AlertDialog open={!!confirmation} onOpenChange={open=>{if(!open&&(!confirmation||!inFlight.current.has(confirmation.post.id)))setConfirmation(null)}}>
 <AlertDialogContent aria-busy={confirmationBusy}>
