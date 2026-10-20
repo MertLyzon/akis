@@ -1,6 +1,11 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'İçerik filtreleri':'Content filters',
+  'Filtreleri temizle':'Clear filters',
+  '{shown} / {total} içerik gösteriliyor':'Showing {shown} / {total} posts',
+  'Aramayı değiştir veya tüm içerikleri görmek için filtreleri temizle.':'Change your search or clear the filters to see all posts.',
+  'Hazır':'Ready',
   'Parolayı göster':'Show password',
   'Parolayı gizle':'Hide password',
   'Oturum kontrol ediliyor…':'Checking your session…',

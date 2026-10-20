@@ -111,6 +111,7 @@
 :root[data-theme] .primary:hover:not(:disabled) { background: #5741bd; border-color: #5741bd; }
 :root[data-theme] .secondary { color: var(--foreground); border-color: var(--input); background: var(--card); }
 :root[data-theme] .secondary:hover:not(:disabled) { background: var(--surface-subtle); }
+:root[data-theme] .inline-link { color:var(--primary); text-underline-offset:3px; }
 .channels { margin: 12px 0 24px; }
 :root[data-theme] .channel { background: var(--card); border-color: var(--border); color: var(--muted-foreground); border-radius: 7px; }
 :root[data-theme] .channel.chosen { background: var(--accent); border-color: var(--primary); color: var(--accent-foreground); }
@@ -166,6 +167,10 @@
 .error,.notice,.field-help,.delivery small,.library-labels .pill { overflow-wrap:anywhere; }
 .library-labels .pill { max-width:100%; white-space:normal; }
 .media-uploader .error { margin-top:12px; line-height:1.65; }
+.post-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:12px 20px; border-bottom:1px solid var(--border); color:var(--muted-foreground); background:var(--surface-subtle); font-size:12px; }
+.post-results-summary .inline-link { min-height:32px; }
+.post-item h3 { overflow-wrap:anywhere; white-space:pre-wrap; line-height:1.65; }
+.post-meta>span { min-width:0; overflow-wrap:anywhere; }
 .password-field { display:grid; gap:9px; min-width:0; }
 .password-control { position:relative; min-width:0; }
 .password-control input { padding-right:52px; margin-top:0; }
@@ -188,6 +193,8 @@
   .command-trigger>span,.command-trigger kbd { display:none; }
 }
 @media (max-width:600px) {
+  .post-results-summary { padding:10px 16px; }
+  .post-results-summary .inline-link { min-height:44px; }
   .login-card { padding:24px 20px; }
   .login-card h1 { font-size:23px; overflow-wrap:anywhere; }
   :root[data-theme] .login-card .primary { min-height:44px; }
