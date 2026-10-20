@@ -1,5 +1,27 @@
 import {expect,test} from '@playwright/test';
 
+test('calendar offers a desktop agenda and today opens at a future company-local hour',async({page})=>{
+  await page.clock.setFixedTime(new Date('2026-10-20T13:42:00Z'));
+  const state=await (await page.request.get('/api/state')).json();state.company.timezone='Europe/Istanbul';
+  state.posts=[{id:'ui-calendar-completed',status:'completed',text:'Published calendar item',created:Date.now(),options:{},platforms:['x'],deliveries:[{sent_at:Date.parse('2026-10-20T10:00:00Z')/1000}]}];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.goto('/');await page.getByRole('button',{name:'Takvim',exact:true}).click();
+  await expect(page.locator('.calendar-viewbar')).toContainText('1 paylaşım bu ayda');
+  await expect(page.locator('.calendar-item')).not.toHaveJSProperty('tagName','BUTTON');
+  await page.getByRole('button',{name:'Liste görünümü',exact:true}).click();
+  await expect(page.locator('.calendar-grid')).toBeHidden();
+  await expect(page.getByRole('region',{name:'Bu ayki paylaşımlar',exact:true})).toContainText('Published calendar item');
+  await page.getByRole('button',{name:'Sonraki ay',exact:true}).click();
+  await expect(page.getByText('Bu ay için planlı veya yayımlanmış içerik yok.',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Bugün',exact:true}).click();
+  await page.getByRole('button',{name:'Ay görünümü',exact:true}).click();
+  await page.getByRole('button',{name:'2026-10-20 Bu güne içerik planla',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'İçerik oluştur',exact:true})).toBeVisible();
+  await expect(page.getByLabel('Paylaşım tarihi',{exact:true})).toHaveValue('2026-10-20');
+  await expect(page.getByLabel('Saat',{exact:true})).toHaveValue('17');
+  await expect(page.getByText('Geçmiş bir saat seçilemez.',{exact:false})).toHaveCount(0);
+});
+
 test('empty library filters preserve their selected option and clear in one fresh read',async({page})=>{
   const reads:URL[]=[];
   const asset={id:'ui-library-filter',filename:'launch.png',folder:'Launch',tags:['important'],status:'ready',mime_type:'image/png',url:null,archived:false,width:100,height:100,size:10};

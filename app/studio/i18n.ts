@@ -1,6 +1,10 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Takvim görünümü':'Calendar view',
+  'Ay görünümü':'Month view',
+  'Liste görünümü':'List view',
+  '{count} paylaşım bu ayda':'{count} posts this month',
   'Filtrelerine uyan medya yok.':'No media matches your filters.',
   'Dosya adını değiştir veya tüm dosyaları görmek için filtreleri temizle.':'Change the filename search or clear the filters to see all files.',
   'Aranıyor…':'Searching…',
