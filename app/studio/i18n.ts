@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Ana içeriğe geç':'Skip to main content',
+  'Menüyü aç veya kapat':'Toggle navigation menu',
   'Son başarılı güncelleme':'Last successful update',
   'Sistem durumu doğrulanamadı':'System status could not be confirmed',
   'Gösterilen veriler güncel olmayabilir. Durumu yeniden kontrol et.':'The displayed data may be out of date. Check the status again.',
