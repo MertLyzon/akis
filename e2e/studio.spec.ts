@@ -1145,8 +1145,12 @@ test('team invitation locks repeated submits and preserves fields after failure'
   await expect(form.getByPlaceholder('E-posta',{exact:true})).toHaveValue('invite-test@example.com');
   await expect(form.getByPlaceholder('Ad Soyad (isteğe bağlı)')).toHaveValue('Test Member');
   await expect(form.getByLabel('Rol',{exact:true})).toHaveValue('viewer');
+  const actionError=page.locator('.team > .error').filter({hasText:'Invitation temporarily unavailable'});
+  await expect(actionError).toBeVisible();
+  await expect(actionError).toContainText('İşlem sunucuda tamamlanmış olabilir.');
   await form.getByRole('button',{name:'Davet et',exact:true}).click();
   await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
+  await expect(actionError).toHaveCount(0);
   await expect(page.getByRole('alert').filter({hasText:'Company refresh unavailable'})).toBeVisible();
   await expect(form.getByPlaceholder('E-posta',{exact:true})).toHaveValue('');
   const warning=page.getByRole('alert').filter({hasText:'İşlem tamamlandı ancak ekip bilgileri yenilenemedi.'});
@@ -1190,6 +1194,8 @@ test('team password reset requires confirmation and cannot submit twice',async({
   await expect(modal.getByRole('button',{name:'Vazgeç',exact:true})).toBeDisabled();
   release();
   await expect(modal.getByRole('button',{name:'Onayla',exact:true})).toBeEnabled();
+  await expect(modal.getByRole('alert')).toContainText('Reset temporarily unavailable');
+  await expect(modal.getByRole('alert')).toContainText('İşlem sunucuda tamamlanmış olabilir.');
   await modal.getByRole('button',{name:'Onayla',exact:true}).click();
   await expect(modal).toBeHidden();
   await expect(page.locator('.secret-card code')).toHaveText('test-only-password');

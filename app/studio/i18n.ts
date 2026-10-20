@@ -73,6 +73,7 @@ const english:Record<string,string>={
   'Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.':'The server did not respond in time. Check your connection and try again.',
   'İstek zaman aşımına uğradı. İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce sonucu kontrol et.':'The request timed out. The operation may have completed on the server. Check the result before trying again.',
   'Medya bilgileri':'Media details',
+  'İşlem sunucuda tamamlanmış olabilir. Yeniden denemeden önce bilgileri yenile.':'The operation may have completed on the server. Refresh the information before trying again.',
   'Listeyi yenile':'Refresh list',
   'İstek sunucuda tamamlanmış olabilir. Yeniden denemeden önce listeyi yenile.':'The request may have completed on the server. Refresh the list before trying again.',
   'Bitiş tarihi geçersiz veya saat değişimi nedeniyle belirsiz. Başka bir saat seç.':'The expiry date is invalid or ambiguous because of a clock change. Choose another time.',
