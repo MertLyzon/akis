@@ -1,6 +1,13 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Son başarılı güncelleme':'Last successful update',
+  'Sistem durumu doğrulanamadı':'System status could not be confirmed',
+  'Gösterilen veriler güncel olmayabilir. Durumu yeniden kontrol et.':'The displayed data may be out of date. Check the status again.',
+  'Güncel durum bilinmiyor':'Current status unknown',
+  'Kontrol başarılı':'Check passed',
+  'Kontrolde sorun var':'Check failed',
+  'Bilgi yok / kullanılmıyor':'Unknown / not in use',
   'Ekip üyeleri':'Team members',
   'Ekipte ara':'Search team',
   'Ad veya e-posta ile ara':'Search by name or email',

@@ -1,7 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {systemBackupPolicy} from '../app/studio/systemPolicy.ts';
+import {systemBackupPolicy,systemOperationalStatus} from '../app/studio/systemPolicy.ts';
 import {KeyedActions} from '../app/studio/libraryRequests.ts';
+
+test('missing or malformed operational summaries never imply healthy systems',()=>{
+  for(const value of [null,undefined,{}, {level:'healthy'}, {level:'unrecognized',issues:[]},{level:'healthy',issues:[null]},{level:'healthy',issues:[{code:'database_unavailable'}]}])assert.equal(systemOperationalStatus(value).level,'unknown');
+});
+test('valid operational levels and issues retain the server assessment',()=>{
+  for(const level of ['healthy','warning','critical']){
+    const snapshot={level,issues:level==='healthy'?[]:[{code:'database_unavailable',count:1}]};
+    assert.deepEqual(systemOperationalStatus(snapshot),snapshot);
+  }
+});
+test('failed refreshes mark even previously healthy data as unknown',()=>{
+  assert.deepEqual(systemOperationalStatus({level:'healthy',issues:[]},true),{level:'unknown',issues:[]});
+});
+test('stale critical issues remain visible without claiming they are freshly checked',()=>{
+  const issues=[{code:'worker_unavailable'}];
+  assert.deepEqual(systemOperationalStatus({level:'critical',issues},true),{level:'unknown',issues});
+});
+test('presentation does not mutate the snapshot or change backup configuration',()=>{
+  const snapshot=Object.freeze({level:'healthy',issues:Object.freeze([])});
+  assert.equal(systemOperationalStatus(snapshot,true).level,'unknown');assert.equal(snapshot.level,'healthy');
+  assert.equal(systemBackupPolicy({automatic:false,interval_days:0},false).automatic,false);
+});
 
 test('missing backup policy is unknown, never assumed automatic',()=>{
   for(const value of [null,undefined,{}]){
