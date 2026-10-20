@@ -824,7 +824,8 @@ def retry(data:RetryInput,actor=Depends(require('approve'))):
         if not row or not p or p.company_id!=actor.company_id: raise HTTPException(404,'Gönderi bulunamadı.')
         if row.status!='failed': raise HTTPException(400,'Yalnızca kesin başarısız gönderimler yeniden denenebilir.')
         changed=db.execute(update(ContentPlatform).where(ContentPlatform.id==row.id,ContentPlatform.status=='failed').values(status='pending',next_attempt_at=now(),retry_count=0,error_code=None,error_message=None,final_request_started=False)).rowcount
-        p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();return {'ok':bool(changed)}
+        if changed!=1: raise HTTPException(409,'İçerik bu sırada değişti. Listeyi yenileyip güncel içerik üzerinden tekrar dene.')
+        p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();return {'ok':True}
 
 # The public launcher builds the Vite app before starting Uvicorn. Serving that
 # immutable build here keeps the development server off the public internet.
