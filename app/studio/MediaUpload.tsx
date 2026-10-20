@@ -7,13 +7,14 @@ import {UploadQueue} from './uploadQueue';
 
 const acceptedMedia='image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm';
 
-export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,onLibrary,multiple=false,disabled=false}:any){
+export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,onLibrary,multiple=false,disabled=false,canUpload}:any){
   const input=useRef<HTMLInputElement>(null),mounted=useRef(true);
   const [progress,setProgress]=useState<number|null>(null),[drag,setDrag]=useState(false),[queued,setQueued]=useState(0);
-  const callbacks=useRef({onUploaded,onBusy,multiple});
-  callbacks.current={onUploaded,onBusy,multiple};
+  const callbacks=useRef({onUploaded,onBusy,multiple,disabled,canUpload});
+  callbacks.current={onUploaded,onBusy,multiple,disabled,canUpload};
   const uploader=useRef<UploadQueue|null>(null);
   if(!uploader.current)uploader.current=new UploadQueue({
+    canEnqueue:()=>!callbacks.current.disabled&&callbacks.current.canUpload?.()!==false,
     onChange:state=>{if(mounted.current){setProgress(state.progress);setQueued(state.queued);if(state.progress===null&&input.current)input.current.value=''}},
     onBusy:busy=>callbacks.current.onBusy?.(busy),
     onSuccess:(result,file)=>{callbacks.current.onUploaded(result);toast.success(callbacks.current.multiple?`${file.name} ${t('yüklendi.')}`:t('Dosya yüklendi, paylaşım için hazırlanıyor.'))},
@@ -28,7 +29,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
     if(result.duplicates)toast.info(t('{count} dosya zaten yükleme sırasında olduğu için tekrar eklenmedi.',{count:result.duplicates}));
   }
   function choose(){
-    if(disabled||!input.current||uploader.current!.isBusy)return;
+    if(disabled||canUpload?.()===false||!input.current||uploader.current!.isBusy)return;
     input.current.value='';input.current.click();
   }
   function selected(event:ChangeEvent<HTMLInputElement>){enqueue(Array.from(event.currentTarget.files||[]))}

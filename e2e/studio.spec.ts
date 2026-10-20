@@ -49,6 +49,28 @@ test('starting an upload closes the picker and ignores a same-event stale media 
   expect(uploads).toBe(1);expect(saves).toBe(0);
 });
 
+test('saving rejects a same-event file selection and permits upload after a failed save',async({page})=>{
+  let saves=0,uploads=0,release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve});
+  await page.route('**/api/posts',async route=>{saves++;await held;return route.fulfill({status:503,json:{error:'Draft save temporarily unavailable'}})});
+  await page.route(/\/api\/media$/,route=>{uploads++;return route.fulfill({status:202,json:{id:'test-after-save',filename:'after-save.png',mime_type:'image/png',status:'processing',url:null}})});
+  await page.goto('/');await page.locator('#content').fill('Keep this draft while saving');
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeEnabled();
+  await page.evaluate(()=>{
+    const input=document.querySelector<HTMLInputElement>('input[type=file]')!;
+    const save=[...document.querySelectorAll<HTMLButtonElement>('button')].find(button=>button.textContent?.trim()==='Taslağı kaydet')!;
+    const files=new DataTransfer();files.items.add(new File(['test-only-image'],'blocked-upload.png',{type:'image/png'}));
+    save.click();input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+  await expect.poll(()=>saves).toBe(1);
+  await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeDisabled();
+  expect(uploads).toBe(0);await expect(page.getByRole('button',{name:'Yüklemeyi durdur',exact:true})).toHaveCount(0);
+  release();await expect(page.getByText('Draft save temporarily unavailable',{exact:true})).toBeVisible();
+  await expect(page.locator('#content')).toHaveValue('Keep this draft while saving');
+  await page.getByLabel('Medya dosyası seç',{exact:true}).setInputFiles({name:'after-save.png',mimeType:'image/png',buffer:Buffer.from('test-only-image')});
+  await expect(page.locator('.asset-card')).toContainText('after-save.png');expect(uploads).toBe(1);expect(saves).toBe(1);
+});
+
 test('a timed-out draft save keeps the editor and only an explicit retry resends its idempotency key',async({page})=>{
   await page.clock.install();
   let release!:()=>void;

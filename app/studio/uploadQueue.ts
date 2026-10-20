@@ -2,6 +2,7 @@ type UploadContext={url:string;headers:Record<string,string>;maxBytes:number;mul
 type UploadItem={file:File;context:UploadContext;key:string};
 type UploadAsset={id:string;mime_type:string;status:string;[key:string]:unknown};
 type UploadCallbacks={
+  canEnqueue?:()=>boolean;
   onChange:(state:{progress:number|null;queued:number})=>void;
   onBusy:(busy:boolean)=>void;
   onSuccess:(asset:UploadAsset,file:File)=>void;
@@ -23,6 +24,7 @@ export class UploadQueue{
   get isBusy(){return this.busy}
 
   enqueue(files:File[],context:UploadContext){
+    if(this.callbacks.canEnqueue?.()===false)return {oversized:0,duplicates:0};
     let oversized=0,duplicates=0;
     for(const file of files){
       if(file.size>context.maxBytes){oversized++;continue}
