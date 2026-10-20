@@ -603,6 +603,35 @@ test('system administration preserves failed forms and never starts backups auto
   expect(creates).toBe(2);expect(toggles).toBe(1);expect(backups).toBe(0);
 });
 
+test('system company and public URL drafts warn before leaving and survive a failed save',async({page})=>{
+  let saves=0;
+  await page.route('**/api/settings/public',route=>{
+    saves++;expect(route.request().postDataJSON()).toMatchObject({public_base_url:'https://draft.example.com'});
+    return saves===1?route.fulfill({status:503,json:{error:'Public URL temporarily unavailable'}}):route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Sistem yönetimi',exact:true}).click();
+  const company=page.getByRole('form',{name:'Şirket oluştur',exact:true});
+  const address=page.getByRole('form',{name:'Sunucunun herkese açık adresi',exact:true});
+  await expect(address.getByRole('button',{name:'Kaydet',exact:true})).toBeDisabled();
+  await company.getByLabel('Şirket adı',{exact:true}).fill('Unsaved company');
+  const target=page.getByRole('button',{name:'Hesabım',exact:true}),modal=page.getByRole('alertdialog');
+  await target.click();await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await expect(company.getByLabel('Şirket adı',{exact:true})).toHaveValue('Unsaved company');
+  await company.getByLabel('Şirket adı',{exact:true}).fill('');
+  await address.getByRole('textbox').fill('https://draft.example.com');
+  await address.getByRole('button',{name:'Kaydet',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Public URL temporarily unavailable'})).toBeVisible();
+  await expect(address.getByRole('textbox')).toHaveValue('https://draft.example.com');
+  await target.click();await expect(modal).toContainText('Kaydedilmemiş değişiklikler');
+  await modal.getByRole('button',{name:'Düzenlemeye devam et',exact:true}).click();
+  await address.getByRole('button',{name:'Kaydet',exact:true}).click();
+  await expect(address.getByRole('button',{name:'Kaydet',exact:true})).toBeDisabled();
+  await expect(target).toBeEnabled();await target.click();
+  await expect(page.getByRole('button',{name:'Kurulumu başlat',exact:true})).toBeVisible();
+  await expect(modal).toBeHidden();expect(saves).toBe(2);
+});
+
 test('failed sign-out preserves the draft and only an explicit retry sends another request',async({page})=>{
   let requests=0,release!:()=>void;
   const held=new Promise<void>(resolve=>{release=resolve});
