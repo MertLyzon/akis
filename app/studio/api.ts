@@ -62,7 +62,7 @@ if(!r.ok){if(r.status===401&&isApp&&token&&revision===authRevision)setToken('');
 request.commit(r.headers.get('ETag')||'');return j;
 }
 export function forgetState(){stateCache.clear()}
-export function dateInput(stamp:number|null){if(!stamp)return '';const d=new Date(stamp*1000);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+export {connectionDateInput as dateInput} from './connectionExpiry';
 export type HourFormat='24'|'12';
 export function readHourFormat():HourFormat{try{return localStorage.getItem('akis-hour-format')==='12'?'12':'24'}catch{return '24'}}
 export function saveHourFormat(value:HourFormat){try{localStorage.setItem('akis-hour-format',value)}catch{}}

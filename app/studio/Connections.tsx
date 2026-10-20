@@ -10,6 +10,7 @@ import {saveThenRefresh,refreshWithWarning} from './settingsSave';
 import {ConnectionDraft,connectionDraftChanged,connectionSaveNeeded,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
 import {useNavigationSafety} from './useNavigationSafety';
 import {connectionStatus} from './connectionStatus';
+import {connectionExpiry} from './connectionExpiry';
 
 export default function Connections({connections,settings,refresh,onSettings}:any){
 const saved=platforms.map(p=>connections.find((c:any)=>c.platform===p.id)).filter(Boolean);
@@ -78,7 +79,7 @@ catch(error){if(popup.current===current)closePopup();throw error}
 function submit(event:any){
 event.preventDefault();if(!needsSave)return;
 const snapshot={...draft};
-return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshToken,account:snapshot.account,label:snapshot.label,expires_at:snapshot.expiry?Math.floor(new Date(snapshot.expiry).getTime()/1000):null,refresh_expires_at:snapshot.refreshExpiry?Math.floor(new Date(snapshot.refreshExpiry).getTime()/1000):null,token_kind:snapshot.long?'long_lived':'manual'}),'Bağlantı bilgileri kaydedildi.',()=>{previous.current=snapshot;setBaseline(snapshot);setToken('');setRefreshToken('')});
+return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshToken,account:snapshot.account,label:snapshot.label,expires_at:connectionExpiry(snapshot.expiry,saved?.expires_at),refresh_expires_at:connectionExpiry(snapshot.refreshExpiry,saved?.refresh_expires_at),token_kind:snapshot.long?'long_lived':'manual'}),'Bağlantı bilgileri kaydedildi.',()=>{previous.current=snapshot;setBaseline(snapshot);setToken('');setRefreshToken('')});
 }
 function remove(){return commit(()=>api('connections',{platform:p.id},'DELETE'),'Bağlantı kaldırıldı.',()=>{const empty=fields(null);previous.current=empty;setBaseline(empty);setDraft(empty);setToken('');setRefreshToken('');setRemoving(false)})}
 
@@ -93,6 +94,7 @@ return <section className="panel connection" aria-busy={locked}>
 {!app&&<p className="field-help">{t('Tek tıkla bağlantı için')} <button className="inline-link" disabled={locked} onClick={onSettings}>{t('uygulama ayarlarını')}</button> {t('tamamla.')}</p>}
 {p.id==='whatsapp'&&<label className="wa-account-label">{t('WhatsApp telefon numarası ID')}<input disabled={locked} value={draft.account} onChange={e=>edit('account',e.target.value)} placeholder={t('Meta panelindeki numara ID')} inputMode="numeric"/></label>}
 <details className="manual-details"><summary>{t('Elle erişim bilgisi gir')}</summary><form onSubmit={submit} aria-label={`${p.name} ${t('Bağlantı bilgileri')}`}>
+<p className="field-help">{t('Bitiş tarihleri bu cihazın saat diliminde gösterilir ve girilir.')}</p>
 <label>{t('Hesap etiketi')}<input disabled={locked} value={draft.label} onChange={e=>edit('label',e.target.value)} placeholder={t('Örn. Marka hesabı')}/></label>
 <label>{t(p.id==='x'?'OAuth 2.0 kullanıcı erişim anahtarı':'Erişim anahtarı')}<input disabled={locked} type="password" autoComplete="new-password" value={token} onChange={e=>setToken(e.target.value)} placeholder={t(saved?'Değiştirmeyeceksen boş bırak':'Access token')} required={!saved}/></label>
 {p.id==='instagram'&&<label>{t('Instagram hesap ID')}<input disabled={locked} value={draft.account} onChange={e=>edit('account',e.target.value)} required pattern="[0-9]+"/></label>}

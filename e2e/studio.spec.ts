@@ -918,7 +918,7 @@ test('two-factor setup cannot rotate twice and a failed enable preserves the set
 test('connection edits survive background updates and conflicting actions are locked',async({page})=>{
   await page.goto('/');
   const snapshot=await (await page.request.get('/api/state')).json();
-  const connection={id:'test-connection',platform:'x',label:'Original label',account:'123',expires_at:1925035200,refresh_expires_at:null,token_kind:'manual',days_left:30,can_refresh:true,has_refresh:true};
+  const connection={id:'test-connection',platform:'x',label:'Original label',account:'123',expires_at:1925035237,refresh_expires_at:1925121691,token_kind:'manual',days_left:30,can_refresh:true,has_refresh:true};
   snapshot.connections=[connection];
   await page.route('**/api/state',route=>route.fulfill({json:snapshot}));
   let requests=0,deletes=0;
@@ -927,7 +927,7 @@ test('connection edits survive background updates and conflicting actions are lo
   await page.route('**/api/connections',async route=>{
     if(route.request().method()==='DELETE'){deletes++;snapshot.connections=[];return route.fulfill({json:{ok:true}})}
     requests++;
-    expect(route.request().postDataJSON()).toMatchObject({platform:'x',label:'Unsaved label',token:'test-only-token',refresh_token:'test-only-refresh'});
+    expect(route.request().postDataJSON()).toMatchObject({platform:'x',label:'Unsaved label',token:'test-only-token',refresh_token:'test-only-refresh',expires_at:connection.expires_at,refresh_expires_at:connection.refresh_expires_at});
     if(requests===1){await held;return route.fulfill({status:503,json:{error:'Connection temporarily unavailable'}})}
     connection.label='Unsaved label';return route.fulfill({json:{ok:true}});
   });

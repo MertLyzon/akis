@@ -1,5 +1,27 @@
 import {expect,test} from '@playwright/test';
 
+test.describe('manual connection expiry dates',()=>{
+  test.use({timezoneId:'Europe/Berlin'});
+  test('ambiguous connection dates keep the draft and send no write until corrected',async({page})=>{
+    await page.goto('/');const snapshot=await (await page.request.get('/api/state')).json();
+    snapshot.connections=[{id:'test-expiry-connection',platform:'x',label:'Test account',account:'123',expires_at:1925035237,refresh_expires_at:null,token_kind:'manual',days_left:30,can_refresh:false,has_refresh:false}];
+    await page.route('**/api/state',route=>route.fulfill({json:snapshot}));let writes=0;
+    await page.route('**/api/connections',route=>{writes++;return route.fulfill({status:503,json:{error:'Test connection service unavailable'}})});
+    await page.reload();await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
+    const form=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true}),card=form.locator('xpath=../..');
+    await card.locator('summary').click();
+    const expiry=form.getByLabel('Erişim anahtarı bitiş tarihi',{exact:true});
+    await form.getByLabel('Hesap etiketi',{exact:true}).fill('Preserve this label');
+    await expiry.fill('2027-10-31T02:30');await form.getByRole('button',{name:'Bilgileri kaydet',exact:true}).click();
+    await expect(card.getByRole('alert')).toContainText('Bitiş tarihi geçersiz veya saat değişimi nedeniyle belirsiz.');
+    await expect(expiry).toHaveValue('2027-10-31T02:30');
+    await expect(form.getByLabel('Hesap etiketi',{exact:true})).toHaveValue('Preserve this label');expect(writes).toBe(0);
+    await expiry.fill('2030-06-15T11:42');await form.getByRole('button',{name:'Bilgileri kaydet',exact:true}).click();
+    await expect(card.getByRole('alert')).toContainText('Test connection service unavailable');expect(writes).toBe(1);
+    await expect(expiry).toHaveValue('2030-06-15T11:42');
+  });
+});
+
 test('account password mismatch focuses and describes the confirmation without sending credentials',async({page})=>{
   let writes=0;
   await page.route('**/api/me/password',route=>{writes++;return route.fulfill({status:503,json:{error:'Test password service unavailable'}})});
