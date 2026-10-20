@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {KeyRound,ShieldCheck,Smartphone,MonitorSmartphone} from 'lucide-react';
 import PasswordField from './PasswordField';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
@@ -14,6 +14,9 @@ type Action='password'|'setup'|'enable'|'disable'|'revoke';
 export default function Account({me,refreshSession,onNavigationState}:any){
 const [setup,setSetup]=useState<{secret:string;uri:string}|null>(null),[code,setCode]=useState(''),[pw,setPw]=useState({current:'',next:'',again:''}),[off,setOff]=useState({password:'',code:''}),[showDisable,setShowDisable]=useState(false),[revoke,setRevoke]=useState(false),[active,setActive]=useState<Action|null>(null),[error,setError]=useState<{action:Action;message:string}|null>(null),[enabled,setEnabled]=useState(!!me.totp_enabled),[passwordChanged,setPasswordChanged]=useState(false);
 const actions=useRef(new KeyedActions()),mounted=useRef(true),latestRefresh=useRef(refreshSession);
+const confirmationId=useId(),confirmationErrorId=useId();
+const mismatch=error?.action==='password'&&error.message==='Yeni parolalar eşleşmiyor.';
+function editPassword(key:keyof typeof pw,value:string){setPw(current=>({...current,[key]:value}));if(mismatch)setError(null)}
 const reportPending=useNavigationSafety(onNavigationState,!!setup,accountFormChanged(pw,off,showDisable));
 latestRefresh.current=refreshSession;
 const busy=active!==null;
@@ -34,7 +37,7 @@ refreshFailed:()=>{if(mounted.current)toast.warning(t('İşlem tamamlandı ancak
 }
 function changePassword(event:any){
 event.preventDefault();if(actions.current.has('account'))return;
-if(pw.next!==pw.again){report('password','Yeni parolalar eşleşmiyor.');return}
+if(pw.next!==pw.again){report('password','Yeni parolalar eşleşmiyor.');document.getElementById(confirmationId)?.focus();return}
 return call('password','me/password',{current:pw.current,new:pw.next},'Parolan değiştirildi.',()=>{setPw({current:'',next:'',again:''});setPasswordChanged(true)});
 }
 function enable(event:any){
@@ -53,9 +56,9 @@ return <div className="account">
 <section className="panel pad"><h2><KeyRound size={18}/>{t('Parola')}</h2><p className="field-help">{me.email} · {t('Parolan değişince diğer cihazlardaki oturumlar kapanır.')}</p>
 <form className="form-grid" aria-label={t('Parolayı değiştir')} aria-busy={active==='password'} onSubmit={changePassword}>
 <PasswordField label={t('Mevcut parola')} disabled={busy} autoComplete="current-password" required maxLength={300} value={pw.current} onChange={e=>setPw({...pw,current:e.target.value})}/>
-<PasswordField label={t('Yeni parola · en az 10 karakter')} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.next} onChange={e=>setPw({...pw,next:e.target.value})}/>
-<PasswordField label={t('Yeni parola tekrar')} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.again} onChange={e=>setPw({...pw,again:e.target.value})}/>
-{passwordError&&<p className="error wide" role="alert">{t(error.message)}</p>}
+<PasswordField label={t('Yeni parola · en az 10 karakter')} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.next} onChange={e=>editPassword('next',e.target.value)}/>
+<PasswordField id={confirmationId} label={t('Yeni parola tekrar')} aria-invalid={mismatch||undefined} aria-describedby={mismatch?confirmationErrorId:undefined} disabled={busy} autoComplete="new-password" minLength={10} maxLength={300} required value={pw.again} onChange={e=>editPassword('again',e.target.value)}/>
+{passwordError&&<p id={confirmationErrorId} className="error wide" role="alert">{t(error.message)}</p>}
 <button className="primary" disabled={busy}>{t(active==='password'?'İşlem sürüyor…':'Parolayı değiştir')}</button></form></section>
 <section className="panel pad"><h2><ShieldCheck size={18}/>{t('İki aşamalı giriş')}</h2>
 {totpError&&<p className="error" role="alert">{t(error.message)}</p>}
