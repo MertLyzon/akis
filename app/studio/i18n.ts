@@ -1,6 +1,12 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Filtrelerine uyan medya yok.':'No media matches your filters.',
+  'Dosya adını değiştir veya tüm dosyaları görmek için filtreleri temizle.':'Change the filename search or clear the filters to see all files.',
+  'Aranıyor…':'Searching…',
+  'Güncel liste bekleniyor.':'Waiting for the current list.',
+  '{count} dosya gösteriliyor':'Showing {count} files',
+  'İlk {count} dosya gösteriliyor. Arama veya filtreyle daralt.':'Showing the first {count} files. Narrow the results with search or filters.',
   'İçerik filtreleri':'Content filters',
   'Filtreleri temizle':'Clear filters',
   '{shown} / {total} içerik gösteriliyor':'Showing {shown} / {total} posts',
