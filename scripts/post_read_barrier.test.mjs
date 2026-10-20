@@ -27,3 +27,21 @@ test('a failed read leaves its snapshot isolated and its holds intact',()=>{
   const barrier=new PostReadBarrier();barrier.hold('a');const before=barrier.snapshot();before.clear();
   assert.equal(barrier.has('a'),true);assert.equal(barrier.snapshot().size,1);
 });
+test('a shared workspace barrier survives replacing its screen consumer',()=>{
+  const workspace=new PostReadBarrier();const firstScreen=workspace;firstScreen.hold('a');
+  const secondScreen=workspace;assert.equal(secondScreen.has('a'),true);
+  secondScreen.confirm(secondScreen.snapshot());assert.equal(workspace.has('a'),false);
+});
+test('switching workspace or signing out clears all previous holds',()=>{
+  const barrier=new PostReadBarrier();barrier.hold('a');barrier.hold('b');barrier.clear();
+  assert.equal(barrier.snapshot().size,0);
+});
+test('a previous workspace read cannot release a new hold for the same identifier',()=>{
+  const barrier=new PostReadBarrier();barrier.hold('a');const oldRead=barrier.snapshot();
+  barrier.clear();barrier.hold('a');barrier.confirm(oldRead);assert.equal(barrier.has('a'),true);
+});
+test('background reads use the same snapshot rules without needing the posts screen',()=>{
+  const workspace=new PostReadBarrier();workspace.hold('a');const background=workspace.snapshot();
+  workspace.hold('b');workspace.confirm(background);
+  assert.deepEqual([...workspace.snapshot().keys()],['b']);
+});
