@@ -15,11 +15,30 @@ test('a stopped upload can be replaced without a late old response replacing the
   await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeDisabled();
   await page.getByRole('button',{name:'Yüklemeyi durdur',exact:true}).click();
   await expect(input).toBeEnabled();
-  await expect(page.getByText('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.',{exact:true})).toBeVisible();
+  await expect(page.locator('.media-uploader').getByRole('alert')).toContainText('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.');
   await input.setInputFiles({name:'new.png',mimeType:'image/png',buffer:Buffer.from('test-only-new-image')});
   await expect(page.locator('.asset-card')).toContainText('new.png');release();
   await expect(page.getByRole('button',{name:'Taslağı kaydet',exact:true})).toBeEnabled();
   await expect(page.locator('.asset-card')).not.toContainText('old.png');expect(requests).toBe(2);
+});
+
+test('an unconfirmed upload keeps its warning and draft until an explicit new upload',async({page})=>{
+  await page.clock.install();let uploads=0;
+  await page.route(/\/api\/media$/,route=>{
+    uploads++;
+    return uploads===1?route.fulfill({status:502,contentType:'text/html',body:'<html>Proxy failure</html>'}):route.fulfill({status:202,json:{id:'test-recovered-upload',filename:'recovered.png',mime_type:'image/png',status:'processing',url:null}});
+  });
+  await page.goto('/');await page.locator('#content').fill('Preserve text after upload failure');
+  const input=page.getByLabel('Medya dosyası seç',{exact:true});
+  await input.setInputFiles({name:'uncertain.png',mimeType:'image/png',buffer:Buffer.from('test-only-image')});
+  const warning=page.locator('.media-uploader').getByRole('alert');
+  await expect(warning).toContainText('Dosya sunucuya ulaşmış olabilir.');
+  await page.clock.fastForward(10_000);await expect(warning).toBeVisible();
+  await expect(page.locator('#content')).toHaveValue('Preserve text after upload failure');
+  await expect(page.locator('.asset-card')).toHaveCount(0);expect(uploads).toBe(1);
+  await expect(page.getByRole('button',{name:'veya medya kütüphanesinden seç',exact:true})).toBeEnabled();
+  await input.setInputFiles({name:'recovered.png',mimeType:'image/png',buffer:Buffer.from('test-only-image')});
+  await expect(page.locator('.asset-card')).toContainText('recovered.png');await expect(warning).toHaveCount(0);expect(uploads).toBe(2);
 });
 
 test('starting an upload closes the picker and ignores a same-event stale media selection',async({page})=>{

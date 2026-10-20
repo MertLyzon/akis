@@ -88,10 +88,11 @@ export class UploadQueue{
         if(this.active!==item)return;
         let result:any;try{result=JSON.parse(request.responseText)}catch{}
         if(request.status<200||request.status>=300){
-          const message=typeof result?.error==='string'?result.error:'Dosya yüklenemedi';
+          const message=typeof result?.error==='string'?result.error.trim():'';
+          const uncertain='Yükleme sonucu doğrulanamadı. Dosya sunucuya ulaşmış olabilir. Yeniden yüklemeden önce kütüphaneyi kontrol et.';
           // A bad individual file may be skipped. Connectivity, quota or permission
-          // failures stop the batch instead of repeating the failure for every file.
-          this.fail(item,message,![400,415,422].includes(request.status));return;
+          // failures and unrecognizable proxy responses must stop the batch.
+          this.fail(item,!message||request.status>=500?uncertain:message,!message||![400,415,422].includes(request.status));return;
         }
         if(!result||typeof result.id!=='string'||!result.id||typeof result.mime_type!=='string'||typeof result.status!=='string'){
           this.fail(item,'Geçerli bir yükleme yanıtı alınamadı. Yeniden yüklemeden önce kütüphaneyi kontrol et.',true);return;

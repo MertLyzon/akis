@@ -10,15 +10,16 @@ const acceptedMedia='image/jpeg,image/png,image/webp,image/heic,image/heif,video
 export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,onLibrary,multiple=false,disabled=false,canUpload}:any){
   const input=useRef<HTMLInputElement>(null),mounted=useRef(true);
   const [progress,setProgress]=useState<number|null>(null),[drag,setDrag]=useState(false),[queued,setQueued]=useState(0);
+  const [uploadError,setUploadError]=useState('');
   const callbacks=useRef({onUploaded,onBusy,multiple,disabled,canUpload});
   callbacks.current={onUploaded,onBusy,multiple,disabled,canUpload};
   const uploader=useRef<UploadQueue|null>(null);
   if(!uploader.current)uploader.current=new UploadQueue({
     canEnqueue:()=>!callbacks.current.disabled&&callbacks.current.canUpload?.()!==false,
     onChange:state=>{if(mounted.current){setProgress(state.progress);setQueued(state.queued);if(state.progress===null&&input.current)input.current.value=''}},
-    onBusy:busy=>callbacks.current.onBusy?.(busy),
+    onBusy:busy=>{if(busy&&mounted.current)setUploadError('');callbacks.current.onBusy?.(busy)},
     onSuccess:(result,file)=>{callbacks.current.onUploaded(result);toast.success(callbacks.current.multiple?`${file.name} ${t('yüklendi.')}`:t('Dosya yüklendi, paylaşım için hazırlanıyor.'))},
-    onError:(message,file,skipped)=>toast.error((callbacks.current.multiple?`${file.name}: `:'')+t(message)+(skipped?' '+t('Kuyruktaki {count} dosya başlatılmadı.',{count:skipped}):'')),
+    onError:(message,file,skipped)=>{const warning=(callbacks.current.multiple?`${file.name}: `:'')+t(message)+(skipped?' '+t('Kuyruktaki {count} dosya başlatılmadı.',{count:skipped}):'');if(mounted.current)setUploadError(warning);toast.error(warning)},
   });
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;uploader.current?.cancel()}},[]);
 
@@ -33,7 +34,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
     input.current.value='';input.current.click();
   }
   function selected(event:ChangeEvent<HTMLInputElement>){enqueue(Array.from(event.currentTarget.files||[]))}
-  function stop(){uploader.current?.cancel();toast.info(t('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.'))}
+  function stop(){uploader.current?.cancel();const warning=t('Yükleme durduruldu. Sunucuya ulaşan dosyalar kütüphanede kalabilir. Yeniden yüklemeden önce kontrol et.');setUploadError(warning);toast.info(warning)}
 
   return <div className="media-uploader" aria-busy={progress!==null} onDragOver={event=>{event.preventDefault();if(!disabled)setDrag(true)}} onDragLeave={()=>setDrag(false)} onDrop={event=>{event.preventDefault();setDrag(false);if(!asset)enqueue(Array.from(event.dataTransfer.files))}}>
     <input ref={input} className="sr-only" tabIndex={-1} type="file" accept={acceptedMedia} multiple={multiple} disabled={disabled||progress!==null} aria-label={t('Medya dosyası seç')} onChange={selected}/>
@@ -46,5 +47,6 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
       {asset.url&&asset.mime_type.startsWith('image')?<img src={mediaSrc(asset.url)} alt={t('Yüklenen görsel önizlemesi')}/>:<FileVideo size={35}/>}<div><strong>{asset.filename}</strong><span>{asset.status==='ready'?`${asset.width} × ${asset.height} · ${(asset.size/1024/1024).toFixed(1)} MB`:t(asset.status==='failed'?'Dosya hazırlanamadı':'Dosya hazırlanıyor…')}</span><p>{asset.error||asset.note}</p></div>{asset.status==='ready'?<CheckCircle2 className="ready-icon" size={18}/>:asset.status!=='failed'&&<Loader2 className="spin" size={18}/>}<button className="icon-button" title={t('Medyayı içerikten kaldır')} aria-label={t('Medyayı içerikten kaldır')} disabled={disabled||progress!==null} onClick={onRemove}><Trash2 size={17}/></button>
     </div>}
     {progress!==null&&<button type="button" className="secondary" onClick={stop}><X size={16}/>{t('Yüklemeyi durdur')}</button>}
+    {uploadError&&<p className="error" role="alert">{uploadError}</p>}
   </div>
 }
