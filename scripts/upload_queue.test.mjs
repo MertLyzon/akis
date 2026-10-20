@@ -24,6 +24,27 @@ function harness(overrides={}){
   return {queue,requests,busy,states,saved,errors};
 }
 
+test('an immediate editor lock rejects files without requests or busy callbacks and allows an explicit retry',()=>{
+  let saving=true;
+  const h=harness({canEnqueue:()=>!saving}),a=file('a.png');
+  assert.deepEqual(h.queue.enqueue([a],context),{oversized:0,duplicates:0});
+  assert.equal(h.requests.length,0);assert.deepEqual(h.busy,[]);assert.deepEqual(h.states,[]);
+  saving=false;h.queue.enqueue([a],context);
+  assert.equal(h.requests.length,1);assert.equal(h.queue.isBusy,true);
+  h.requests[0].respond(201,asset('a'));assert.equal(h.saved.length,1);
+});
+
+test('a changing lock cannot append files or disturb an already active upload',()=>{
+  let allowed=true;
+  const h=harness({canEnqueue:()=>allowed});
+  h.queue.enqueue([file('a.png')],context);allowed=false;
+  h.queue.enqueue([file('b.png')],context);
+  assert.equal(h.requests.length,1);assert.equal(h.states.at(-1).queued,0);
+  assert.deepEqual(h.busy,[true]);h.requests[0].respond(201,asset('a'));
+  assert.equal(h.requests.length,1);assert.deepEqual(h.busy,[true,false]);
+  allowed=true;h.queue.enqueue([file('b.png')],context);assert.equal(h.requests.length,2);
+});
+
 test('rapid additions deduplicate active and waiting files and run sequentially',()=>{
   const h=harness(),a=file('a.png'),b=file('b.png');
   assert.deepEqual(h.queue.enqueue([a,a,b],context),{oversized:0,duplicates:1});
