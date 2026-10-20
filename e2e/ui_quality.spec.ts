@@ -1,5 +1,27 @@
 import {expect,test} from '@playwright/test';
 
+test('system overview does not retain a healthy claim after failed refresh or missing assessment',async({page})=>{
+  const snapshot=await (await page.request.get('/api/system/overview')).json();
+  snapshot.operational={level:'healthy',issues:[]};let fail=false,reads=0;
+  await page.route('**/api/system/overview',route=>{
+    reads++;return fail?route.fulfill({status:503,json:{error:'Overview temporarily unavailable'}}):route.fulfill({json:snapshot});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Sistem yönetimi',exact:true}).click();
+  const summary=page.locator('.operational-summary');
+  await expect(summary).toContainText('Tüm sistemler sağlıklı');
+  await expect(page.locator('.system-last-update')).toContainText('Son başarılı güncelleme');
+  fail=true;await page.getByRole('button',{name:'Yenile',exact:true}).click();
+  await expect(summary).toContainText('Sistem durumu doğrulanamadı');
+  await expect(page.locator('.health.ok')).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Servis sağlığı',exact:true})).toBeVisible();
+  fail=false;delete snapshot.operational;
+  await page.getByRole('button',{name:'Yenile',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Overview temporarily unavailable'})).toHaveCount(0);
+  await expect(summary).toContainText('Sistem durumu doğrulanamadı');
+  snapshot.operational={level:'healthy',issues:[]};await page.getByRole('button',{name:'Yenile',exact:true}).click();
+  await expect(summary).toContainText('Tüm sistemler sağlıklı');expect(reads).toBeGreaterThanOrEqual(4);
+});
+
 test('team search restores rows and failed activity reads have an explicit single-flight retry',async({page})=>{
   let reads=0,release!:()=>void;
   const held=new Promise<void>(resolve=>{release=resolve});

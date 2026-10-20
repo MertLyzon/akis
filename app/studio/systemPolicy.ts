@@ -8,3 +8,9 @@ export function systemBackupPolicy(value:any,cloud:boolean){
   const known=typeof value?.automatic==='boolean'&&validInterval&&(!value.automatic||(interval>0&&validKeep));
   return {known,automatic:known&&value.automatic===true,interval_days:interval,keep,remote:typeof value?.remote==='boolean'?value.remote:cloud};
 }
+
+export function systemOperationalStatus(value:any,stale=false){
+  const issues=Array.isArray(value?.issues)?value.issues.filter((issue:any)=>typeof issue?.code==='string'&&issue.code):[];
+  const known=['healthy','warning','critical'].includes(value?.level)&&Array.isArray(value?.issues)&&issues.length===value.issues.length&&!(value.level==='healthy'&&issues.length>0);
+  return {level:known&&!stale?value.level:'unknown',issues};
+}

@@ -204,6 +204,10 @@
 .team-search-empty { display:grid; justify-items:start; gap:10px; padding:16px 0; white-space:normal; color:var(--muted-foreground); }
 .audit-loading { display:flex; align-items:center; gap:8px; margin-top:16px; color:var(--muted-foreground); }
 .audit-empty { margin-top:18px; padding:16px; border:1px dashed var(--border); border-radius:8px; color:var(--muted-foreground); }
+.system-loading { display:flex; align-items:center; gap:10px; }
+.system-last-update { margin-top:8px; font-size:12px; }
+.health-state { display:block; margin:4px 0; font-size:12px; color:var(--muted-foreground); }
+:root[data-theme] .operational-summary.unknown { background:var(--surface-subtle); color:var(--muted-foreground); border-color:var(--input); }
 .post-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:12px 20px; border-bottom:1px solid var(--border); color:var(--muted-foreground); background:var(--surface-subtle); font-size:12px; }
 .post-results-summary .inline-link { min-height:32px; }
 .library-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-height:44px; margin:-6px 0 14px; color:var(--muted-foreground); font-size:12px; }
