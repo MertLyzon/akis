@@ -92,9 +92,28 @@ for(const status of [401,403,413,429,500])test(`HTTP ${status} stops the batch`,
   const h=harness();h.queue.enqueue([file('a.png'),file('b.png')],context);
   h.requests[0].respond(status,{error:'Cannot continue'});
   assert.equal(h.requests.length,1);
-  assert.equal(h.errors[0].message,'Cannot continue');
+  if(status>=500)assert.match(h.errors[0].message,/sunucuya ulaşmış olabilir/);
+  else assert.equal(h.errors[0].message,'Cannot continue');
   assert.equal(h.errors[0].skipped,1);
   assert.equal(h.queue.isBusy,false);
+});
+
+for(const status of [0,400,415,422,502,503])for(const response of ['<html>Proxy error</html>',{}, {error:''},{error:'   '},{error:42}])test(`unconfirmed HTTP ${status} payload ${JSON.stringify(response)} stops the batch and warns before retry`,()=>{
+  const h=harness();h.queue.enqueue([file('a.png'),file('b.png')],context);
+  h.requests[0].respond(status,response);
+  assert.equal(h.requests.length,1);assert.equal(h.saved.length,0);
+  assert.equal(h.errors.length,1);assert.equal(h.errors[0].skipped,1);
+  assert.match(h.errors[0].message,/sunucuya ulaşmış olabilir/);
+  assert.equal(h.queue.isBusy,false);assert.deepEqual(h.busy,[true,false]);
+  h.queue.enqueue([file('b.png')],context);assert.equal(h.requests.length,2);
+});
+
+for(const status of [400,415,422])test(`a confirmed HTTP ${status} rejection skips only the invalid file`,()=>{
+  const h=harness();h.queue.enqueue([file('a.png'),file('b.png')],context);
+  h.requests[0].respond(status,{error:'  Invalid file  '});
+  assert.equal(h.errors[0].message,'Invalid file');assert.equal(h.errors[0].skipped,0);
+  assert.equal(h.requests.length,2);h.requests[1].respond(202,asset('b'));
+  assert.deepEqual(h.saved.map(entry=>entry.result.id),['b']);assert.equal(h.queue.isBusy,false);
 });
 
 test('a rejected individual file does not prevent the next valid file',()=>{
