@@ -1,5 +1,6 @@
 import {t} from './i18n';
 import {StateCache} from './stateCache';
+import {normalizeServerAddress} from './serverAddress';
 import {fetchJson,RequestTimeoutError,InvalidJsonError,apiTimeout,STATE_TIMEOUT_MS,SERVER_CHECK_TIMEOUT_MS} from './requestDeadline';
 
 export const platforms=[{id:'x',name:'X / Twitter',symbol:'𝕏',color:'#171c25',hint:'Metin, görsel ve video'},{id:'instagram',name:'Instagram',symbol:'◎',color:'#dc4369',hint:'Görsel ve Reels'},{id:'tiktok',name:'TikTok',symbol:'♪',color:'#171c25',hint:'Görselden video ve aktarım'},{id:'whatsapp',name:'WhatsApp',symbol:'◉',color:'#159467',hint:'Medya ve şablon mesajlar'}];
@@ -25,13 +26,13 @@ let server=isApp?stored('akis-server'):'';
 let token=isApp?stored('akis-token'):'';
 let authRevision=0;
 export function serverUrl(){return server}
-export function setServer(url:string){const next=url.trim().replace(/\/+$/,'');if(server!==next){authRevision++;forgetState()}server=next;store('akis-server',server)}
+export function setServer(url:string){const next=url.trim()?normalizeServerAddress(url):'';if(server!==next){authRevision++;setToken('');setCompany('');forgetState()}server=next;store('akis-server',server)}
 export function setToken(t:string){if(token!==t){authRevision++;forgetState()}token=t;store('akis-token',t)}
 export function authHeaders():Record<string,string>{return isApp?{'X-Akis-Client':'app',...(token?{Authorization:'Bearer '+token}:{})}:{}}
 export function apiUrl(path:string){return server+'/api/'+path}
 // Media URLs from the server are relative (/api/media/...) or absolute Cloudinary links.
 export function mediaSrc(url:string|null|undefined){return url&&url.startsWith('/')?server+url:url||''}
-export async function checkServer(url:string){const base=url.trim().replace(/\/+$/,'');let parsed:URL;try{parsed=new URL(base)}catch{throw new Error('Geçerli bir sunucu adresi gir.')}const loopback=['localhost','127.0.0.1','[::1]'].includes(parsed.hostname);if(parsed.protocol!=='https:'&&!(parsed.protocol==='http:'&&loopback))throw new Error('Uzak sunucu adresi güvenli bir https:// adresi olmalı.');let r:Response,j:any;try{({response:r,data:j}=await fetchJson(base+'/api/health',{},SERVER_CHECK_TIMEOUT_MS))}catch(error){if(error instanceof RequestTimeoutError)throw new Error('Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.');if(error instanceof InvalidJsonError)throw new Error('Bu adreste bir Akış sunucusu bulunamadı.');throw new Error('Sunucuya ulaşılamadı. Adresi ve internet bağlantını kontrol et.')}if(!r.ok||!j?.ok)throw new Error('Bu adreste bir Akış sunucusu bulunamadı.');return base}
+export async function checkServer(url:string){const base=normalizeServerAddress(url);let r:Response,j:any;try{({response:r,data:j}=await fetchJson(base+'/api/health',{credentials:'omit'},SERVER_CHECK_TIMEOUT_MS))}catch(error){if(error instanceof RequestTimeoutError)throw new Error('Sunucu zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene.');if(error instanceof InvalidJsonError)throw new Error('Bu adreste bir Akış sunucusu bulunamadı.');throw new Error('Sunucuya ulaşılamadı. Adresi ve internet bağlantını kontrol et.')}if(!r.ok||j?.ok!==true)throw new Error('Bu adreste bir Akış sunucusu bulunamadı.');return base}
 export async function openExternal(url:string){if(isApp){const {openUrl}=await import('@tauri-apps/plugin-opener');await openUrl(url)}else window.open(url,'_blank','noopener')}
 
 export class ApiError extends Error{data:any;status:number;constructor(message:string,status:number,data:any){super(message);this.status=status;this.data=data}}

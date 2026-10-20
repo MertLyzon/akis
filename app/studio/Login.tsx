@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {Layers3,ShieldCheck,Server} from 'lucide-react';
-import {api,ApiError,isApp,serverUrl,setServer,checkServer,setToken,setCompany,forgetState} from './api';
+import {api,ApiError,isApp,serverUrl,setServer,checkServer} from './api';
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {normalizedTotpCode} from './accountSecurity';
@@ -16,7 +16,7 @@ try{await actions.current.run('login',async()=>{setBusy(true);setError('');try{a
 }
 function saveServer(event:any){event.preventDefault();const requested=server;return run(async()=>{
 const checked=await checkServer(requested);if(!mounted.current)return;
-if(checked!==serverUrl()){setToken('');setCompany('');forgetState();setEmail('');setPassword('');setCode('');setNeedsCode(false)}
+if(checked!==serverUrl()){setEmail('');setPassword('');setCode('');setNeedsCode(false)}
 setServer(checked);setServerField(checked);setEditingServer(false);
 })}
 function submit(event:any){
