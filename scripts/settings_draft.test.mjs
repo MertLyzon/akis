@@ -1,8 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {settingsDraft,mergeSettingsDraft,settingsDraftChanged} from '../app/studio/settingsDraft.ts';
+import {settingsDraft,mergeSettingsDraft,settingsDraftChanged,settingsSaveNeeded} from '../app/studio/settingsDraft.ts';
 
 const initial={client:'original',redirect:'https://example.com/callback',mode:'web'};
+test('unchanged saved settings cannot trigger another write',()=>{
+  assert.equal(settingsSaveNeeded(true,{...initial},initial,''),false);
+});
+test('new setup stays saveable even before editing its default callback',()=>{
+  assert.equal(settingsSaveNeeded(false,{...initial},initial,''),true);
+});
+test('a secret-only edit or any changed metadata needs saving',()=>{
+  assert.equal(settingsSaveNeeded(true,{...initial},initial,'test-only-secret'),true);
+  for(const change of [{client:'new'},{redirect:'https://other.example.com/callback'},{mode:'desktop'}])assert.equal(settingsSaveNeeded(true,{...initial,...change},initial,''),true);
+});
+test('restoring original metadata removes the need to save',()=>{
+  const draft={...initial,client:'edited'};assert.equal(settingsSaveNeeded(true,draft,initial,''),true);
+  draft.client=initial.client;assert.equal(settingsSaveNeeded(true,draft,initial,''),false);
+});
 test('new platform defaults are clean and saved fields take precedence',()=>{
   const draft=settingsDraft(null,'https://app.example.com','x');
   assert.equal(draft.redirect,'https://app.example.com/api/oauth/x/callback');

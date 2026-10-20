@@ -1,6 +1,8 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Dönüş adresini kopyala':'Copy callback URL',
+  'Kaydedilmemiş değişiklik yok.':'No unsaved changes.',
   'Süresi doldu':'Expired',
   'Yakında doluyor':'Expiring soon',
   '{count} bağlantı kontrol gerektiriyor.':'{count} connections need attention.',

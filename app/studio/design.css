@@ -192,6 +192,12 @@
 :root[data-theme=dark] .connection-state-danger { background:#40232c; color:#ffb0bd; }
 :root[data-theme=dark] .connection-banner.is-warning { background:#30291e; border-color:#5f4b2c; }
 .connection-banner.is-warning>svg { color:var(--foreground); }
+.callback-copy,.settings-save-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+.callback-copy>span,.settings-draft-state { font-size:12px; color:var(--muted-foreground); overflow-wrap:anywhere; }
+.settings-draft-state.is-dirty { color:var(--accent-foreground); }
+.connection .callback-copy .secondary { margin-top:0; }
+.settings-save-row { margin-top:6px; }
+.connection .settings-save-row .primary { margin-top:0; }
 .post-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:12px 20px; border-bottom:1px solid var(--border); color:var(--muted-foreground); background:var(--surface-subtle); font-size:12px; }
 .post-results-summary .inline-link { min-height:32px; }
 .library-results-summary { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-height:44px; margin:-6px 0 14px; color:var(--muted-foreground); font-size:12px; }
@@ -220,6 +226,7 @@
   .command-trigger>span,.command-trigger kbd { display:none; }
 }
 @media (max-width:600px) {
+  .callback-copy>button,.settings-save-row>button { min-height:44px; }
   .connection-heading>.pill { margin-left:0; }
   .oauth-actions>button { flex:1 1 150px; }
   :root[data-theme] .connection :is(.oauth-actions button,.connection-actions button) { min-height:44px; }

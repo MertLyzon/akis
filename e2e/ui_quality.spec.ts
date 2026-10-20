@@ -1,5 +1,28 @@
 import {expect,test} from '@playwright/test';
 
+test('saved app settings expose copy feedback and do not resend unchanged values',async({page})=>{
+  const state=await (await page.request.get('/api/state')).json();
+  const config={platform:'x',client_id:'original-client',redirect_uri:'https://example.com/api/oauth/x/callback',mode:'web',has_secret:true};
+  state.settings.oauth_apps=[config];let writes=0;
+  await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value:string)=>{(window as any).testCopiedCallback=value}}}));
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.route('**/api/settings/oauth',route=>{writes++;config.client_id=route.request().postDataJSON().client_id;return route.fulfill({json:{ok:true}})});
+  await page.goto('/');await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  const form=page.getByRole('form',{name:'X / Twitter Uygulama ayarları',exact:true});
+  const save=form.getByRole('button',{name:'Ayarları kaydet',exact:true});
+  await expect(save).toBeDisabled();await expect(form.getByRole('status')).toHaveText('Kaydedilmemiş değişiklik yok.');
+  await form.getByRole('button',{name:'Dönüş adresini kopyala',exact:true}).click();
+  await expect(form.getByText('Kopyalandı.',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).testCopiedCallback)).toBe(config.redirect_uri);expect(writes).toBe(0);
+  await form.getByLabel('Uygulama / Client ID',{exact:true}).fill('updated-client');
+  await expect(save).toBeEnabled();await expect(form.getByText('Kaydedilmemiş değişiklikler',{exact:true})).toBeVisible();
+  await save.click();await expect(save).toBeDisabled();
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeEnabled();
+  await form.evaluate(node=>node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  await expect(form.getByLabel('Uygulama / Client ID',{exact:true})).toBeEnabled();
+  expect(writes).toBe(1);
+});
+
 test('connection cards distinguish expired, renewal-error and expiring accounts without extra checks',async({page})=>{
   const state=await (await page.request.get('/api/state')).json();
   state.connections=[{id:'ui-expired',platform:'x',label:'Expired account',days_left:0,expires_at:null,can_refresh:false},
