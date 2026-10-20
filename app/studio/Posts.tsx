@@ -8,7 +8,7 @@ import {t} from './i18n';
 import {useNavigationSafety} from './useNavigationSafety';
 import {saveThenRefresh} from './settingsSave';
 import {postFilters,filterPosts,matchesPost,nextPostFilter,postMediaStatus} from './postFilters';
-import {postActionFailure} from './postActionFailure';
+import {actionFailure as postActionFailure} from './actionFailure';
 import type {PostReadBarrier} from './postReadBarrier';
 import {KeyedActions} from './libraryRequests';
 

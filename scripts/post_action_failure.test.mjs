@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {postActionFailure} from '../app/studio/postActionFailure.ts';
+import {actionFailure as postActionFailure} from '../app/studio/actionFailure.ts';
 
 test('network failures keep their message and warn that the outcome is unknown',()=>{
   assert.deepEqual(postActionFailure(Error('Connection lost')),{message:'Connection lost',uncertain:true});
