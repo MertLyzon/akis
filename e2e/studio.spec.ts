@@ -936,6 +936,14 @@ test('connection edits survive background updates and conflicting actions are lo
   const form=page.getByRole('form',{name:'X / Twitter Bağlantı bilgileri',exact:true,includeHidden:true});
   const card=form.locator('xpath=../..');
   await card.locator('summary').click();
+  await expect(form.getByRole('button',{name:'Bilgileri kaydet',exact:true})).toBeDisabled();
+  await expect(form.getByRole('status')).toHaveText('Kaydedilmemiş değişiklik yok.');
+  await form.evaluate(node=>node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(requests).toBe(0);
+  await form.getByLabel('Hesap etiketi',{exact:true}).fill('Temporary edit');
+  await expect(form.getByRole('button',{name:'Bilgileri kaydet',exact:true})).toBeEnabled();
+  await form.getByLabel('Hesap etiketi',{exact:true}).fill('Original label');
+  await expect(form.getByRole('button',{name:'Bilgileri kaydet',exact:true})).toBeDisabled();
   await form.getByLabel('Hesap etiketi',{exact:true}).fill('Unsaved label');
   await form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true}).fill('test-only-token');
   await form.getByLabel('Yenileme anahtarı',{exact:true}).fill('test-only-refresh');
@@ -960,6 +968,10 @@ test('connection edits survive background updates and conflicting actions are lo
   await form.getByRole('button',{name:'Bilgileri kaydet',exact:true}).click();
   await expect(form.getByLabel('OAuth 2.0 kullanıcı erişim anahtarı',{exact:true})).toHaveValue('');
   await expect(form.getByLabel('Yenileme anahtarı',{exact:true})).toHaveValue('');
+  await expect(form.getByRole('button',{name:'Bilgileri kaydet',exact:true})).toBeDisabled();
+  await expect(form.getByRole('status')).toHaveText('Kaydedilmemiş değişiklik yok.');
+  await form.evaluate(node=>node.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  expect(requests).toBe(2);
   await page.getByRole('button',{name:'Hesabım',exact:true}).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
   await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();

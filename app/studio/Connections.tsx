@@ -7,7 +7,7 @@ import {Checkbox} from '@/components/ui/checkbox';
 import {t} from './i18n';
 import {KeyedActions} from './libraryRequests';
 import {saveThenRefresh,refreshWithWarning} from './settingsSave';
-import {ConnectionDraft,connectionDraftChanged,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
+import {ConnectionDraft,connectionDraftChanged,connectionSaveNeeded,isOAuthResult,mergeConnectionDraft} from './connectionDraft';
 import {useNavigationSafety} from './useNavigationSafety';
 import {connectionStatus} from './connectionStatus';
 
@@ -22,7 +22,9 @@ const [token,setToken]=useState(''),[refreshToken,setRefreshToken]=useState(''),
 const previous=useRef(fields(saved)),actions=useRef(new KeyedActions()),mounted=useRef(true),operationPending=useRef(false),popup=useRef<Window|null>(null),popupOrigin=useRef(''),latestRefresh=useRef(refresh);
 const oauthResultPending=useRef(false);
 const [oauthRefreshing,setOAuthRefreshing]=useState(false),[oauthRefreshFailed,setOAuthRefreshFailed]=useState(false);
-const reportPending=useNavigationSafety(undefined,false,connectionDraftChanged(draft,baseline,token,refreshToken));
+const dirty=connectionDraftChanged(draft,baseline,token,refreshToken);
+const needsSave=connectionSaveNeeded(!!saved,draft,baseline,token,refreshToken);
+const reportPending=useNavigationSafety(undefined,false,dirty);
 latestRefresh.current=refresh;
 const locked=busy||oauthOpen||oauthRefreshing;
 const status=connectionStatus(saved);
@@ -74,7 +76,7 @@ try{const result=await api('oauth/start',{platform:p.id,account:draft.account});
 catch(error){if(popup.current===current)closePopup();throw error}
 })}
 function submit(event:any){
-event.preventDefault();
+event.preventDefault();if(!needsSave)return;
 const snapshot={...draft};
 return commit(()=>api('connections',{platform:p.id,token,refresh_token:refreshToken,account:snapshot.account,label:snapshot.label,expires_at:snapshot.expiry?Math.floor(new Date(snapshot.expiry).getTime()/1000):null,refresh_expires_at:snapshot.refreshExpiry?Math.floor(new Date(snapshot.refreshExpiry).getTime()/1000):null,token_kind:snapshot.long?'long_lived':'manual'}),'Bağlantı bilgileri kaydedildi.',()=>{previous.current=snapshot;setBaseline(snapshot);setToken('');setRefreshToken('')});
 }
@@ -97,7 +99,8 @@ return <section className="panel connection" aria-busy={locked}>
 {['x','tiktok'].includes(p.id)&&<><label>{t('Yenileme anahtarı')}<input disabled={locked} type="password" autoComplete="new-password" value={refreshToken} onChange={e=>setRefreshToken(e.target.value)} placeholder={t(saved?.has_refresh?'Kayıtlı · değiştirmek için yaz':'Refresh token')}/></label><p className="field-help">{t('Yeni erişim anahtarı giriyorsan ona ait yenileme anahtarını da gir.')}</p><label>{t('Yenileme anahtarı bitiş tarihi')}<input disabled={locked} type="datetime-local" value={draft.refreshExpiry} onChange={e=>edit('refreshExpiry',e.target.value)}/></label></>}
 <label>{t('Erişim anahtarı bitiş tarihi')}<input disabled={locked} type="datetime-local" value={draft.expiry} onChange={e=>edit('expiry',e.target.value)}/></label><p className="field-help">{t('Platformun verdiği gerçek tarihi kullan. Boş alan, sürenin bilinmediği anlamına gelir.')}</p>
 {p.id==='instagram'&&<div className="inline-options"><Checkbox disabled={locked} id={'long-'+p.id} checked={draft.long} onCheckedChange={value=>edit('long',!!value)}/><label htmlFor={'long-'+p.id}>{t('Bu, uzun ömürlü Instagram token’ı')}</label></div>}
-<div className="connection-actions"><button className="primary" disabled={locked}>{t(busy?'Kaydediliyor…':'Bilgileri kaydet')}</button>{saved&&<button className="text-button" disabled={locked} type="button" onClick={()=>{if(!actions.current.has('connection')){setError('');setRemoving(true)}}}>{t('Bağlantıyı kaldır')}</button>}</div>
+<div className="connection-actions"><button className="primary" disabled={locked||!needsSave}>{t(busy?'Kaydediliyor…':'Bilgileri kaydet')}</button>{saved&&<button className="text-button" disabled={locked} type="button" onClick={()=>{if(!actions.current.has('connection')){setError('');setRemoving(true)}}}>{t('Bağlantıyı kaldır')}</button>}</div>
+{(dirty||saved)&&<p className={'settings-draft-state '+(dirty?'is-dirty':'')} role="status">{t(dirty?'Kaydedilmemiş değişiklikler':'Kaydedilmemiş değişiklik yok.')}</p>}
 </form></details>
 <AlertDialog open={removing} onOpenChange={open=>{if(!actions.current.has('connection'))setRemoving(open)}}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>{p.name} · {t('Bağlantıyı kaldır')}</AlertDialogTitle><AlertDialogDescription>{t('Bu platformun kayıtlı erişim bilgileri kaldırılır. Yeniden bağlanman gerekir.')}</AlertDialogDescription></AlertDialogHeader>{error&&<p className="error" role="alert">{t(error)}</p>}<AlertDialogFooter><AlertDialogCancel disabled={busy}>{t('Vazgeç')}</AlertDialogCancel><AlertDialogAction disabled={busy} onClick={event=>{event.preventDefault();remove()}}>{t(busy?'İşlem sürüyor…':'Bağlantıyı kaldır')}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
 </section>

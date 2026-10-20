@@ -5,6 +5,10 @@ export function connectionDraftChanged(current:ConnectionDraft,saved:ConnectionD
   return !!token||!!refreshToken||current.account!==saved.account||current.label!==saved.label||current.expiry!==saved.expiry||current.refreshExpiry!==saved.refreshExpiry||current.long!==saved.long;
 }
 
+export function connectionSaveNeeded(configured:boolean,current:ConnectionDraft,saved:ConnectionDraft,token:string,refreshToken:string){
+  return !configured||connectionDraftChanged(current,saved,token,refreshToken);
+}
+
 // A background token refresh may update saved metadata, but not the user's edits.
 export function mergeConnectionDraft(current:ConnectionDraft,previous:ConnectionDraft,incoming:ConnectionDraft):ConnectionDraft{
   return {
