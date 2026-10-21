@@ -16,6 +16,7 @@ import Invite,{inviteToken} from './studio/Invite';
 import {Language,readLanguage,saveLanguage,t} from './studio/i18n';
 import LanguageQuick from './studio/LanguageQuick';
 import CommandMenu from './studio/CommandMenu';
+import {stageEditorText} from './studio/editorStaging';
 import {NavigationSafety,NavigationStatus} from './studio/navigationSafety';
 import {NavigationContext} from './studio/useNavigationSafety';
 import {KeyedActions} from './studio/libraryRequests';
@@ -54,6 +55,7 @@ const navigationLocked=busy||uploading||navigationStatus.pending;
 const contentBody={text,platforms:selected,asset_id:assetId,scheduled_local:schedule,recipients:recipients.split(/[\s,;]+/).filter(Boolean),template,language,template_params:params.split('\n').filter(Boolean),wa_mode:waMode,session_confirmed:sessionConfirmed};
 const editorBaseline=useRef(JSON.stringify(emptyContent));
 const hasUnsavedChanges=JSON.stringify(contentBody)!==editorBaseline.current;
+const editorDirty=useRef(hasUnsavedChanges);editorDirty.current=hasUnsavedChanges;
 const editingVersion=useRef<number|null>(null);
 const request=useRef({fingerprint:'',id:''});
 const saveInFlight=useRef(false);
@@ -112,7 +114,7 @@ useEffect(()=>{const connected=()=>{setOnline(true);if(session?.authenticated)re
 const pollInterval=statePollInterval(state);
 useEffect(()=>{if(!session?.authenticated)return;const id=setInterval(()=>{if(!document.hidden&&navigator.onLine)refresh()},pollInterval);return()=>clearInterval(id)},[session?.authenticated,refresh,pollInterval]);
 useEffect(()=>{function shortcut(event:KeyboardEvent){if(session?.authenticated&&(event.metaKey||event.ctrlKey)&&event.key.toLocaleLowerCase()==='k'){event.preventDefault();if(!busy&&!uploading&&!navigation.current.snapshot().pending)setCommandOpen(value=>!value)}}window.addEventListener('keydown',shortcut);return()=>window.removeEventListener('keydown',shortcut)},[session?.authenticated,busy,uploading]);
-useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();try{Promise.resolve(context.registerTool({name:'stage_content',description:'Prepare text in the content editor without saving or publishing.',inputSchema:{type:'object',properties:{text:{type:'string',maxLength:5000}},required:['text'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:any){const guard=navigation.current.snapshot();if(saveInFlight.current||uploadInFlight.current||guard.pending||guard.sensitive||guard.dirty)throw Error(t('Önce bu ekrandaki işlemi tamamla, değişikliklerini kaydet ve tek seferlik bilgileri kapat.'));if(typeof input?.text!=='string'||input.text.length>5000)throw Error(t('Geçersiz metin'));setText(input.text);setView('compose');return {staged:true,published:false}}},{signal:life.signal})).catch(()=>{})}catch{}return()=>life.abort()},[]);
+useEffect(()=>{const context=(document as any).modelContext;if(!context?.registerTool)return;const life=new AbortController();try{Promise.resolve(context.registerTool({name:'stage_content',description:'Prepare text in the content editor without saving or publishing.',inputSchema:{type:'object',properties:{text:{type:'string',maxLength:5000}},required:['text'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input:any){let text:string;try{text=stageEditorText(input,{saving:saveInFlight.current,uploading:uploadInFlight.current,editorDirty:editorDirty.current,navigation:navigation.current.snapshot()})}catch(error){throw Error(t((error as Error).message))}setText(text);setView('compose');return {staged:true,published:false}}},{signal:life.signal})).catch(()=>{})}catch{}return()=>life.abort()},[]);
 // One unsent draft per person and company; removed on sign-out so a shared computer does not show it to the next user.
 const draftKey=state.company?.id&&session?.user?.id?`akis-draft:${session.user.id}:${state.company.id}`:'';
 // Restore before writing, and flush each edit before another browser interaction can navigate away.

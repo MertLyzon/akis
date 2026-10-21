@@ -1,5 +1,20 @@
 import {expect,test} from '@playwright/test';
 
+test('external staging cannot overwrite unsaved editor work or publish a post',async({page})=>{
+  await page.addInitScript(()=>Object.defineProperty(document,'modelContext',{configurable:true,value:{registerTool(tool:any){if(tool.name==='stage_content')(window as any).testStageContent=tool.execute}}}));
+  let writes=0;
+  await page.route('**/api/posts',route=>{writes++;return route.fulfill({json:{id:'unexpected-external-write'}})});
+  await page.goto('/');await expect(page.locator('#content')).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>typeof (window as any).testStageContent)).toBe('function');
+  const first=await page.evaluate(()=>(window as any).testStageContent({text:'External draft only'}));
+  expect(first).toEqual({staged:true,published:false});await expect(page.locator('#content')).toHaveValue('External draft only');
+  await page.locator('#content').fill('Keep my unsaved manual draft');
+  const failure=await page.evaluate(()=>{try{(window as any).testStageContent({text:'Unexpected replacement'});return ''}catch(error){return (error as Error).message}});
+  expect(failure).toContain('Önce bu ekrandaki işlemi tamamla');
+  await expect(page.locator('#content')).toHaveValue('Keep my unsaved manual draft');
+  expect(writes).toBe(0);
+});
+
 test('install prompting is single-flight until the browser choice completes',async({page})=>{
   await page.goto('/');
   await page.evaluate(()=>{
