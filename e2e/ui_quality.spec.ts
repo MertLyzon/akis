@@ -1,5 +1,34 @@
 import {expect,test} from '@playwright/test';
 
+test('install prompting is single-flight until the browser choice completes',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(()=>{
+    let resolve!:(value:any)=>void;(window as any).testInstallCalls=0;
+    const event=new Event('beforeinstallprompt',{cancelable:true});
+    Object.assign(event,{prompt:async()=>{(window as any).testInstallCalls++},userChoice:new Promise(done=>{resolve=done})});
+    (window as any).finishTestInstall=resolve;window.dispatchEvent(event);
+  });
+  const hint=page.locator('.install-hint'),button=hint.getByRole('button',{name:'Yükle',exact:true});
+  await button.evaluate(node=>{(node as HTMLButtonElement).click();(node as HTMLButtonElement).click()});
+  await expect(hint.getByRole('button',{name:'İşlem sürüyor…',exact:true})).toBeDisabled();
+  expect(await page.evaluate(()=>(window as any).testInstallCalls)).toBe(1);
+  await page.evaluate(()=>(window as any).finishTestInstall({outcome:'accepted'}));
+  await expect(hint).toHaveCount(0);
+});
+
+test('a failed install prompt leaves actionable guidance without claiming installation',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(()=>{
+    const event=new Event('beforeinstallprompt',{cancelable:true});
+    Object.assign(event,{prompt:async()=>{throw Error('test-only prompt failure')},userChoice:new Promise(()=>{})});
+    window.dispatchEvent(event);
+  });
+  const hint=page.locator('.install-hint');await hint.getByRole('button',{name:'Yükle',exact:true}).click();
+  await expect(hint.getByRole('alert')).toContainText('Yükleme penceresi açılamadı.');
+  await expect(hint.getByRole('button',{name:'Yükle',exact:true})).toHaveCount(0);
+  await expect(hint.getByRole('button',{name:'Kapat',exact:true})).toBeEnabled();
+});
+
 test('team invitations expose field names and constraints and member icons identify their target',async({page})=>{
   await page.goto('/');const snapshot=await (await page.request.get('/api/company')).json();
   snapshot.members.push({user_id:'test-accessible-member',email:'accessible@example.com',name:'Accessible Member',role:'editor',totp_enabled:false,must_change_password:false});
