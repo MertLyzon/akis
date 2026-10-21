@@ -1,4 +1,4 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './fixtures';
 
 test('processing media polling recovers after a transient read failure and stops when ready',async({page})=>{
   await page.clock.install();let reads=0;
@@ -467,7 +467,7 @@ test('company refresh preserves edits and saving one form does not discard an in
   const timezone=snapshot.company.timezone==='Europe/London'?'Europe/Berlin':'Europe/London';
   snapshot.company.name='Externally updated company';snapshot.company.timezone=timezone;
   await page.getByRole('combobox',{name:snapshot.members[0].email+' Rol',exact:true}).selectOption(snapshot.members[0].role==='viewer'?'editor':'viewer');
-  await expect(form.getByLabel('Saat dilimi',{exact:true})).toHaveValue(timezone);
+  await expect(form.getByRole('combobox',{name:'Saat dilimi',exact:true})).toHaveValue(timezone);
   await expect(form.getByLabel('Şirket adı',{exact:true})).toHaveValue('  My edited company  ');
   await form.getByRole('button',{name:'Kaydet',exact:true}).click();
   await expect.poll(()=>saves).toBe(1);
@@ -1100,8 +1100,11 @@ test('connection edits survive background updates and conflicting actions are lo
   expect(requests).toBe(2);
   await page.getByRole('button',{name:'Hesabım',exact:true}).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
+  await expect(page.getByRole('heading',{name:'Hesabım',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Bağlantılar',exact:true}).click();
-  await card.locator('summary').click();
+  await expect(page.getByRole('heading',{name:'Bağlantılar',exact:true})).toBeVisible();
+  if(!await card.locator('details').evaluate((node:HTMLDetailsElement)=>node.open))await card.locator('summary').click();
+  await expect(form).toBeVisible();
   await form.getByRole('button',{name:'Bağlantıyı kaldır',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();
@@ -1222,7 +1225,7 @@ test('team invitation locks repeated submits and preserves fields after failure'
   const beforeRetry=companyReads;recovered=true;
   await warning.getByRole('button',{name:'Bilgileri yenile',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>companyReads).toBe(beforeRetry+1);
-  await expect(form.getByRole('button',{name:'Davet et',exact:true})).toBeDisabled();
+  await expect(form.getByRole('button',{name:'İşlem sürüyor…',exact:true})).toBeDisabled();
   await expect(page.locator('.secret-card code')).toContainText('/join?token=test-only');
   releaseRetry();await expect(warning).toBeHidden();
   await expect(form.getByRole('button',{name:'Davet et',exact:true})).toBeEnabled();
@@ -1245,7 +1248,7 @@ test('team password reset requires confirmation and cannot submit twice',async({
     return route.fulfill({json:{temporary_password:'test-only-password'}});
   });
   await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
-  const row=page.getByRole('row').filter({hasText:'reset-test@example.com'});
+  const row=page.getByRole('row',{includeHidden:true}).filter({hasText:'reset-test@example.com'});
   await row.getByRole('button',{name:'Parolayı sıfırla · reset-test@example.com',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await expect(modal).toContainText('reset-test@example.com');
@@ -1254,7 +1257,7 @@ test('team password reset requires confirmation and cannot submit twice',async({
   await row.getByRole('button',{name:'Parolayı sıfırla · reset-test@example.com',exact:true}).click();
   await modal.getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>requests).toBe(1);
-  await expect(row.getByRole('combobox')).toBeDisabled();
+  await expect(row.getByRole('combobox',{includeHidden:true})).toBeDisabled();
   await expect(modal.getByRole('button',{name:'Vazgeç',exact:true})).toBeDisabled();
   release();
   await expect(modal.getByRole('button',{name:'Onayla',exact:true})).toBeEnabled();
@@ -1285,19 +1288,20 @@ test('review locks one post and preserves the rejection note after a failure',as
   });
   await page.reload();
   await page.getByRole('button',{name:/^Gönderiler/}).click();
+  await page.getByRole('tab',{name:'Tümü',exact:true}).click();
   const row=page.locator('article').filter({hasText:names[0]});
   await row.getByRole('button',{name:'Reddet',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await expect(modal.getByRole('button',{name:'Reddet',exact:true})).toBeDisabled();
-  await modal.getByLabel('Red nedeni',{exact:true}).fill('Please update the image');
+  await modal.getByRole('textbox',{name:'Red nedeni',exact:true}).fill('Please update the image');
   await modal.getByRole('button',{name:'Reddet',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>requests).toBe(1);
   await expect(row).toHaveAttribute('aria-busy','true');
   await expect(row.getByRole('button',{name:'Onayla',exact:true,includeHidden:true})).toBeDisabled();
   await expect(page.locator('article').filter({hasText:names[1]}).getByRole('button',{name:'Düzenle',exact:true,includeHidden:true})).toBeEnabled();
   release();
-  await expect(modal.getByLabel('Red nedeni',{exact:true})).toBeEnabled();
-  await expect(modal.getByLabel('Red nedeni',{exact:true})).toHaveValue('Please update the image');
+  await expect(modal.getByRole('textbox',{name:'Red nedeni',exact:true})).toBeEnabled();
+  await expect(modal.getByRole('textbox',{name:'Red nedeni',exact:true})).toHaveValue('Please update the image');
   await modal.getByRole('button',{name:'Reddet',exact:true}).click();
   await expect(modal).toBeHidden();
   await expect(row).toContainText('Please update the image');
@@ -1449,5 +1453,5 @@ test('a draft can be created from the studio',async({page})=>{
   await page.goto('/');
   await page.getByPlaceholder('Bugün dünyayla ne paylaşmak istersin?').fill(text);
   await page.getByRole('button',{name:'Taslağı kaydet'}).click();
-  await expect(page.getByText(text)).toBeVisible();
+  await expect(page.locator('.post-item').filter({hasText:text})).toBeVisible();
 });

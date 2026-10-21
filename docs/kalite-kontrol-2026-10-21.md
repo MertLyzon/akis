@@ -1,7 +1,7 @@
 # Akış kalite kontrolü — 21 Ekim 2026
 
 Bu rapor, 0.4.0 üzerindeki bu geliştirme oturumunun doğrulanmış kapsamını kaydeder.
-Son kod grubu: API hata yanıtlarının güvenli biçimlendirilmesi (bu raporla aynı değişiklik grubu).
+Son kod grubu: dil seçicinin gerçek klavye davranışının düzeltilmesi ve tam tarayıcı doğrulaması.
 Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zamanlanmış iş eklenmedi.
 
 ## Güvenilirlik ve kullanıcı deneyimi
@@ -19,7 +19,8 @@ Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zam
 - Kurulum penceresi çift tıklamaya ve iki bağımsız tarayıcı yanıtının farklı sırada
   başarısız olmasına karşı korunur. Kurulum kabulü doğrulanmadan başarı gösterilmez.
 - Ekran araması Türkçe büyük/küçük harfleri ve Türkçe karaktersiz klavyeyi destekler.
-  Dil seçici mevcut Radix radyo grubuna taşındı; klavye senaryosu eklendi.
+  Dil seçici yerel radyo kontrolleri kullanır; ok tuşlarıyla seçim, gerçek odak,
+  dil değişimi ve sonraki alana Tab geçişi Chromium üzerinde doğrulandı.
 - Sistem kayıtları ve son eşitleme saati mevcut dil ve 12/24 saat tercihini kullanır;
   saat dilimi veya gönderim zamanı değiştirilmedi.
 - Harici metin hazırlama giriş noktası kaydedilmemiş editör değişikliklerini de
@@ -58,8 +59,11 @@ Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zam
 - `.venv/bin/python -m pytest -q`: **252 test geçti, 1 test atlandı**; geçici SQLite.
 - `git diff --check`: geçti.
 - `sh -n deploy/nginx-entrypoint.sh start-local.sh`: geçti.
-- Yeni tarayıcı senaryoları Playwright test keşfinde bulundu. Keşif, senaryonun
-  yürütüldüğü veya geçtiği anlamına gelmez.
+- `npx playwright test --reporter=line`: **79 senaryo geçti**; izole yerel SQLite
+  ve Chromium, 2 işçi. Gerçek üretim kullanıcıları veya verileri kullanılmadı.
+- Tarayıcı hazırlığı yerel test oturumunu başlatır; doğrudan hazırlık istekleri
+  geçerli yerel Origin gönderir. Üretim kimlik doğrulaması veya CSRF kontrolü
+  gevşetilmedi. Değişen düğme adları ve erişilebilir roller için seçiciler düzeltildi.
 
 Yeni toplu birim testi komutu Windows/Unix kabuk farkına bağlı olmadan tüm
 `scripts/*.test.mjs` dosyalarını bulur. Mevcut CI işi bu komutu kullanacak şekilde
@@ -68,8 +72,11 @@ CI çalıştırmaz; bu oturumda CI veya yükleyici derleme işi başlatıldığ�
 
 ## Tarayıcı ve dağıtım sınırları
 
-- Yerel Chromium başlatma macOS MachPort/izin hatasıyla, WebKit denemesi de
-  senaryoların doğrulamalarına ulaşmadan sonlandı. Yeni E2E testleri **geçmiş sayılmadı**.
+- Sandbox içindeki Chromium macOS MachPort hatası verdi; izinli sandbox dışı
+  çalıştırma ile tam Chromium paketi başarıyla tamamlandı. İşletim sistemi güvenlik
+  ayarları değiştirilmedi. WebKit başarısı iddia edilmez.
+- Ayarlar ekranının testte alınan gerçek görüntüsü incelendi; dil/saat kontrolleri,
+  odak göstergesi ve platform kartlarının yerleşimi kontrol edildi.
 - Manuel yerel tarayıcı kontrolü giriş ekranıyla sınırlıydı: parola göster/gizle,
   boşaltılınca tekrar gizleme, 390 px genişlikte yatay taşma olmaması ve 16 px alan
   yazı boyutu gözlendi. Giriş gönderilmedi; kimlik doğrulama aşılmadı.
@@ -85,6 +92,7 @@ CI çalıştırmaz; bu oturumda CI veya yükleyici derleme işi başlatıldığ�
 
 ## Sonraki doğrulama önceliği
 
-Tarayıcı başlatma izni çözüldüğünde izole E2E paketini çalıştırmak; ardından ayrı ve
-silinebilir PostgreSQL test veritabanı/CI üzerinde arka uç paketini ve Docker
-entegrasyonunu doğrulamak. Bunlar yeni kod eklemekten ayrı kalite kapılarıdır.
+İzole Chromium E2E paketi tamamlandı. Ayrı ve silinebilir PostgreSQL test
+veritabanı/CI üzerinde arka uç paketini, Docker entegrasyonunu ve kurulum
+paketlerini doğrulamak kalan kalite kapılarıdır. Bu sonuçlar tüm ortamlarda
+hatasız çalışma garantisi değildir.

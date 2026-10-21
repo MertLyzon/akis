@@ -11,6 +11,8 @@ export default defineConfig({
   reporter:process.env.CI?'github':'list',
   use:{
     baseURL:'http://127.0.0.1:5173',
+    // APIRequestContext setup writes must pass the same CSRF origin check as the browser.
+    extraHTTPHeaders:{Origin:'http://127.0.0.1:5173'},
     trace:'retain-on-failure',
     ...devices['Desktop Chrome']
   },
