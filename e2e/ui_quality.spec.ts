@@ -1,5 +1,18 @@
 import {expect,test} from '@playwright/test';
 
+test('media metadata omits missing dimensions and unknown states do not spin forever',async({page})=>{
+  const ready={id:'test-null-dimensions',filename:'metadata.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:null,archived:false,width:null,height:null,size:1024};
+  const unknown={...ready,id:'test-unknown-state',filename:'unknown.png',status:'unexpected'};
+  await page.route(/\/api\/media\?/,route=>route.fulfill({json:{items:[ready,unknown],folders:[]}}));
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  const card=page.locator('.library-card').filter({hasText:'metadata.png'}),other=page.locator('.library-card').filter({hasText:'unknown.png'});
+  await expect(card.locator('.library-info > small')).toHaveText('1 KB');
+  await expect(other.locator('.library-info > small')).toHaveText('Durum bilinmiyor.');await expect(other.locator('.spin')).toHaveCount(0);
+  await card.getByRole('button',{name:'Yeni içerikte kullan',exact:true}).click();
+  await expect(page.locator('.asset-card')).toContainText('1 KB');
+  await expect(page.locator('.asset-card')).not.toContainText('null');await expect(page.locator('.asset-card')).not.toContainText('NaN');
+});
+
 test.describe('manual connection expiry dates',()=>{
   test.use({timezoneId:'Europe/Berlin'});
   test('ambiguous connection dates keep the draft and send no write until corrected',async({page})=>{
