@@ -358,6 +358,8 @@ test('quick navigation traps focus, recovers from empty results and restores its
   await search.fill('no-matching-screen');await search.press('ArrowDown');
   await expect(dialog.getByRole('status')).toHaveText('Aramana uyan ekran yok.');
   await expect(search).not.toHaveAttribute('aria-activedescendant');
+  await search.fill('ICERIK');await expect(dialog.getByRole('option',{selected:true})).toHaveText('İçerik oluştur');
+  await search.fill('sirket yonetimi');await expect(dialog.getByRole('option',{selected:true})).toHaveText('Şirket yönetimi');
   await search.fill('Takvim');
   await expect(dialog.getByRole('option',{selected:true})).toHaveText('Takvim');
   await search.press('Enter');await expect(dialog).toBeHidden();

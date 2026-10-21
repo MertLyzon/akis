@@ -7,7 +7,8 @@ import {api,platforms,statuses,contentStatuses,outcomes,stages,inZone,mediaSrc} 
 import {t} from './i18n';
 import {useNavigationSafety} from './useNavigationSafety';
 import {saveThenRefresh} from './settingsSave';
-import {postFilters,filterPosts,matchesPost,nextPostFilter,postMediaStatus} from './postFilters';
+import {postFilters,filterPosts,matchesPost,nextPostFilter} from './postFilters';
+import {postMediaStatus} from './mediaPreviewState';
 import {actionFailure as postActionFailure} from './actionFailure';
 import type {PostReadBarrier} from './postReadBarrier';
 import {KeyedActions} from './libraryRequests';

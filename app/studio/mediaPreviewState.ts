@@ -3,6 +3,9 @@ export function mediaIsProcessing(status:string|undefined){return ['processing',
 export function mediaStatusLabel(status:string|undefined){
   return status==='ready'?'Hazır':status==='failed'?'Hazırlanamadı':mediaIsProcessing(status)?'Hazırlanıyor…':'Durum bilinmiyor.';
 }
+export function postMediaStatus(asset:{note?:string;status?:string}){
+  return asset.note||mediaStatusLabel(asset.status);
+}
 export function readyMediaDetails(asset:{width?:unknown;height?:unknown;size?:unknown},formatSize:(bytes:number)=>string){
   const parts:string[]=[];
   const positiveInteger=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;

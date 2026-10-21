@@ -18,6 +18,3 @@ export function nextPostFilter(current:string,key:string){
   if(key==='ArrowRight')return postFilters[(index+1)%postFilters.length].id;
   if(key==='ArrowLeft')return postFilters[(index+postFilters.length-1)%postFilters.length].id;
 }
-export function postMediaStatus(asset:{note?:string;status?:string}){
-  return asset.note||(asset.status==='ready'?'Hazır':asset.status==='failed'?'Hazırlanamadı':'Hazırlanıyor…');
-}

@@ -3,13 +3,14 @@ import {CornerDownLeft,Search,X} from 'lucide-react';
 import {Dialog} from 'radix-ui';
 import type {LucideIcon} from 'lucide-react';
 import {t} from './i18n';
+import {filterCommands} from './commandSearch';
 
 export type CommandItem={id:string;name:string;icon:LucideIcon;hint?:string;run:()=>void};
 
 export default function CommandMenu({open,items,onClose}:{open:boolean;items:CommandItem[];onClose:()=>void}){
 const [query,setQuery]=useState(''),[active,setActive]=useState(0),input=useRef<HTMLInputElement>(null);
 const previousFocus=useRef<HTMLElement|null>(null),listId=useId();
-const results=useMemo(()=>{const needle=query.trim().toLocaleLowerCase();return needle?items.filter(item=>item.name.toLocaleLowerCase().includes(needle)):items},[items,query]);
+const results=useMemo(()=>filterCommands(items,query),[items,query]);
 const selected=results.length?Math.min(active,results.length-1):0;
 useEffect(()=>{if(open){setQuery('');setActive(0)}},[open]);
 useEffect(()=>{if(open&&results[selected])document.getElementById(`${listId}-${results[selected].id}`)?.scrollIntoView({block:'nearest'})},[open,selected,results,listId]);
