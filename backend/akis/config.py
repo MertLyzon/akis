@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     keep_local_media: bool = True
     backup_dir: str = str(ROOT / 'backups')
     # Set to 0 to disable scheduled backups while keeping manual backups available.
-    backup_interval_days: int = 7
+    backup_interval_days: int = 0
     backup_keep: int = 3
     # auto uploads verified backups to private Cloudinary raw storage when configured.
     backup_remote: str = 'auto'
