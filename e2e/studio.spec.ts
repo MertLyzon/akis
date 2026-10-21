@@ -1,5 +1,24 @@
 import {expect,test} from '@playwright/test';
 
+test('processing media polling recovers after a transient read failure and stops when ready',async({page})=>{
+  await page.clock.install();let reads=0;
+  const asset={id:'test-processing-poll',filename:'poll-recovery.png',folder:'',tags:[],status:'processing',mime_type:'image/png',url:null,archived:false,width:null,height:null,size:10};
+  await page.route(/\/api\/media\?/,route=>{
+    reads++;
+    if(reads===2)return route.fulfill({status:503,json:{error:'Test polling unavailable'}});
+    return route.fulfill({json:{items:[{...asset,status:reads>=3?'ready':'processing'}],folders:[]}});
+  });
+  await page.goto('/');await page.getByRole('button',{name:'Medya kütüphanesi',exact:true}).click();
+  const card=page.locator('.library-card').filter({hasText:asset.filename});
+  await expect(card).toContainText('Medya hazırlanıyor');expect(reads).toBe(1);
+  await page.clock.fastForward(3100);
+  await expect(page.locator('.library').getByRole('alert')).toContainText('Test polling unavailable');expect(reads).toBe(2);
+  await page.clock.fastForward(3100);
+  await expect(card.getByRole('button',{name:'Yeni içerikte kullan',exact:true})).toBeEnabled();
+  await expect(page.locator('.library').getByRole('alert')).toHaveCount(0);expect(reads).toBe(3);
+  await page.clock.fastForward(10_000);expect(reads).toBe(3);
+});
+
 test('a stopped upload can be replaced without a late old response replacing the new media',async({page})=>{
   let release!:()=>void,requests=0;
   const held=new Promise<void>(resolve=>{release=resolve});

@@ -11,6 +11,7 @@ import {systemBackupPolicy,systemOperationalStatus} from './systemPolicy';
 import {useNavigationSafety} from './useNavigationSafety';
 import {emptySystemCompany,systemDraftChanged,mergePublicUrl} from './systemDraft';
 import type {SystemCompanyDraft} from './systemDraft';
+import {pollWhileActive} from './foregroundPolling';
 
 function Health({label,value,detail,stale=false}:any){const checked=stale?undefined:value;const Icon=checked===true?CheckCircle2:checked===false?XCircle:MinusCircle;return <div className={'health '+(checked===true?'ok':checked===false?'bad':'off')}><Icon size={18} aria-hidden="true"/><div><strong>{label}</strong><span className="health-state">{t(stale?'Güncel durum bilinmiyor':checked===true?'Kontrol başarılı':checked===false?'Kontrolde sorun var':'Bilgi yok / kullanılmıyor')}</span><small>{detail}</small></div></div>}
 const date=(value:number)=>value?new Date(value*1000).toLocaleString(locale()):'';
@@ -36,7 +37,7 @@ setReading(true);
 const request=overview.current.run(()=>api('system/overview'),value=>{setData(value);setLastUpdated(Math.floor(Date.now()/1000));setLoadError('')},(error:any)=>setLoadError(error.message),()=>setReading(false));
 inFlight.current=request;void request.finally(()=>{if(inFlight.current===request)inFlight.current=null});return request;
 },[]);
-useEffect(()=>{load();const id=setInterval(()=>{if(!document.hidden)load()},10000);return()=>clearInterval(id)},[load]);
+useEffect(()=>{load();return pollWhileActive(()=>load(),10000)},[load]);
 async function act(kind:string,write:()=>Promise<any>,done:(result:any)=>void,refreshSession=false){
 try{return await actions.current.run('system',async()=>{
 reportPending(true);setActive(kind);setActionError('');let result:any;

@@ -13,11 +13,13 @@ import {saveThenRefresh} from './settingsSave';
 import {useNavigationSafety} from './useNavigationSafety';
 import {libraryFilterOptions,libraryEmptyTitle} from './libraryFilters';
 import {mediaStatusLabel,readyMediaDetails} from './mediaPreviewState';
+import {pollWhileActive} from './foregroundPolling';
 
 export default function Library({can,maxMB,onUse,onBusy,picker=false}:any){
 const [uploadBusy,setUploadBusy]=useState(false);
 const actions=useRef(new KeyedActions()),requests=useRef(new LatestRequest()),mounted=useRef(true);
 const readActions=useRef(new KeyedActions());
+const readPending=useRef(false);
 const [active,setActive]=useState(new Set<string>()),[deleting,setDeleting]=useState<any>(null);
 const [editing,setEditing]=useState<{asset:{id:string;filename:string};draft:LibraryDraft;baseline:LibraryDraft}|null>(null),[discardEdit,setDiscardEdit]=useState(false),[editError,setEditError]=useState('');
 const dirty=!!editing&&libraryDraftChanged(editing.draft,editing.baseline);
@@ -32,11 +34,12 @@ const query=new URLSearchParams({folder,tag,q:search,archived:String(archived)})
 const currentFilters=useRef({folder,tag,archived});currentFilters.current={folder,tag,archived};
 // Search waits for a typing pause instead of querying on every keystroke.
 useEffect(()=>{const id=setTimeout(()=>setSearch(q.trim()),300);return()=>clearTimeout(id)},[q]);
-const load=useCallback(()=>{if(!mounted.current)return Promise.resolve(false);setReading(true);return requests.current.run(()=>api('media?'+query),r=>{setItems(r.items);setFolders(r.folders);setLoadedQuery(query);setLoadError('')},(e:any)=>setLoadError(e.message),()=>{setLoading(false);setReading(false)})},[query]);
+const load=useCallback(()=>{if(!mounted.current)return Promise.resolve(false);readPending.current=true;setReading(true);return requests.current.run(()=>api('media?'+query),r=>{setItems(r.items);setFolders(r.folders);setLoadedQuery(query);setLoadError('')},(e:any)=>setLoadError(e.message),()=>{readPending.current=false;setLoading(false);setReading(false)})},[query]);
 const latestLoad=useRef(load);latestLoad.current=load;
 async function retryList(){await readActions.current.run('list-read',async()=>{await latestLoad.current()})}
 useEffect(()=>{setLoading(true);load();return()=>requests.current.invalidate()},[load]);
-useEffect(()=>{if(!items.some(a=>['processing','queued','converting'].includes(a.status)))return;const id=setTimeout(load,3000);return()=>clearTimeout(id)},[items,load]);
+const processing=items.some(a=>['processing','queued','converting'].includes(a.status));
+useEffect(()=>{if(processing)return pollWhileActive(()=>readPending.current?Promise.resolve(false):latestLoad.current(),3000)},[processing,load]);
 async function mutate(a:any,changes:any,method:string,msg:string){
 try{return await actions.current.run(a.id,async()=>{
 reportPending(true);setActive(previous=>new Set(previous).add(a.id));

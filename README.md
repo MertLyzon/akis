@@ -136,6 +136,11 @@ Tüm ön yüz birim ve koruma testleri `npm test` veya `npm run test:unit` ile �
 ayrıca eklenmez. Windows ve Unix aynı dosya listesini kullanır; boş test listesi
 başarı sayılmaz. Yukarıdaki konu bazlı komutlar hızlı, dar kapsamlı kontroller için korunur.
 
+İşlenen medya takibi ve sistem durumu yenilemesi sekme gizliyken veya cihaz
+çevrimdışıyken sorgu göndermez. Ekrana dönüldüğünde/bağlantı geldiğinde hemen bir
+kontrol yapılır; devam eden otomatik okuma çoğaltılmaz. Geçici okuma hatası takibi
+kalıcı olarak durdurmaz. Bu takip yalnızca okuma yapar, dosya yüklemez veya gönderi yayımlamaz.
+
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
 kurmak gerekir. Test çalıştırıcısı mevcutsa proje kökündeki `.venv` Python'unu,
