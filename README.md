@@ -131,6 +131,11 @@ Yükleme kuyruğunun sıra, tekrar, hata ve iptal davranışları `npm run test:
 ile tarayıcı başlatmadan doğrulanır; bu testler dosya yüklemez ve CI'da da çalışır.
 İptal/tamamlanma bildirimi sırasında başlatılan yeni yükleme eski işlemin kilit açma bildirimiyle serbest bırakılmaz. Aktarımın iptal çağrısı hata verse de arayüz kilidi çözülür ve eski yanıtlar yok sayılır. Bağlantı kesintisi, zaman aşımı veya iptal sonrasında dosya sunucuya ulaşmış olabileceğinden yeniden yüklemeden önce kütüphane kontrolü önerilir; otomatik yeniden yükleme yapılmaz.
 
+Tüm ön yüz birim ve koruma testleri `npm test` veya `npm run test:unit` ile çalışır.
+Çalıştırıcı `scripts/*.test.mjs` dosyalarını otomatik bulur; yeni testler CI listesine
+ayrıca eklenmez. Windows ve Unix aynı dosya listesini kullanır; boş test listesi
+başarı sayılmaz. Yukarıdaki konu bazlı komutlar hızlı, dar kapsamlı kontroller için korunur.
+
 Kritik tarayıcı akışları izole bir geçici SQLite veritabanıyla `npm run test:e2e`
 komutundan doğrulanır. İlk kullanımda Chromium'u `npm run test:e2e:install` ile
 kurmak gerekir. Test çalıştırıcısı mevcutsa proje kökündeki `.venv` Python'unu,
