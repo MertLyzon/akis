@@ -1,5 +1,18 @@
 import {expect,test} from '@playwright/test';
 
+test('team invitations expose field names and constraints and member icons identify their target',async({page})=>{
+  await page.goto('/');const snapshot=await (await page.request.get('/api/company')).json();
+  snapshot.members.push({user_id:'test-accessible-member',email:'accessible@example.com',name:'Accessible Member',role:'editor',totp_enabled:false,must_change_password:false});
+  await page.route('**/api/company',route=>route.fulfill({json:snapshot}));
+  await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
+  const form=page.getByRole('form',{name:'Davet et',exact:true});
+  await expect(form.getByLabel('E-posta',{exact:true})).toHaveAttribute('maxlength','254');
+  await expect(form.getByLabel('Ad Soyad (isteğe bağlı)',{exact:true})).toHaveAttribute('maxlength','120');
+  await expect(form.getByLabel('E-posta',{exact:true})).toHaveAttribute('autocomplete','email');
+  await expect(page.getByRole('button',{name:'Parolayı sıfırla · accessible@example.com',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Ekipten çıkar · accessible@example.com',exact:true})).toBeVisible();
+});
+
 test('media metadata omits missing dimensions and unknown states do not spin forever',async({page})=>{
   const ready={id:'test-null-dimensions',filename:'metadata.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:null,archived:false,width:null,height:null,size:1024};
   const unknown={...ready,id:'test-unknown-state',filename:'unknown.png',status:'unexpected'};

@@ -1182,12 +1182,12 @@ test('team password reset requires confirmation and cannot submit twice',async({
   });
   await page.getByRole('button',{name:'Şirket yönetimi',exact:true}).click();
   const row=page.getByRole('row').filter({hasText:'reset-test@example.com'});
-  await row.getByRole('button',{name:'Parolayı sıfırla',exact:true}).click();
+  await row.getByRole('button',{name:'Parolayı sıfırla · reset-test@example.com',exact:true}).click();
   const modal=page.getByRole('alertdialog');
   await expect(modal).toContainText('reset-test@example.com');
   await modal.getByRole('button',{name:'Vazgeç',exact:true}).click();
   await expect(modal).toBeHidden();expect(requests).toBe(0);
-  await row.getByRole('button',{name:'Parolayı sıfırla',exact:true}).click();
+  await row.getByRole('button',{name:'Parolayı sıfırla · reset-test@example.com',exact:true}).click();
   await modal.getByRole('button',{name:'Onayla',exact:true}).evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click()});
   await expect.poll(()=>requests).toBe(1);
   await expect(row.getByRole('combobox')).toBeDisabled();
