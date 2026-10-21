@@ -41,6 +41,26 @@ test('an unconfirmed upload keeps its warning and draft until an explicit new up
   await expect(page.locator('.asset-card')).toContainText('recovered.png');await expect(warning).toHaveCount(0);expect(uploads).toBe(2);
 });
 
+test('oversized file guidance persists without replacing an uncertain upload warning',async({page})=>{
+  await page.clock.install();await page.goto('/');
+  const snapshot=await (await page.request.get('/api/state')).json();snapshot.settings.max_upload_mb=0.001;
+  await page.route('**/api/state',route=>route.fulfill({json:snapshot}));let uploads=0;
+  await page.route(/\/api\/media$/,route=>{
+    uploads++;return uploads===1?route.fulfill({status:502,contentType:'text/html',body:'Test proxy unavailable'}):route.fulfill({status:202,json:{id:'test-valid-after-limit',filename:'small.png',mime_type:'image/png',status:'processing',url:null}});
+  });
+  await page.reload();const input=page.getByLabel('Medya dosyası seç',{exact:true});
+  await input.setInputFiles({name:'uncertain.png',mimeType:'image/png',buffer:Buffer.from('test-only')});
+  const uploader=page.locator('.media-uploader');
+  await expect(uploader.getByRole('alert').filter({hasText:'Dosya sunucuya ulaşmış olabilir.'})).toBeVisible();
+  await input.setInputFiles({name:'large.png',mimeType:'image/png',buffer:Buffer.alloc(2048)});
+  await expect(uploader.getByRole('alert').filter({hasText:'sınırını aştığı için atlandı.'})).toBeVisible();expect(uploads).toBe(1);
+  await page.clock.fastForward(10_000);
+  await expect(uploader.getByRole('alert').filter({hasText:'sınırını aştığı için atlandı.'})).toBeVisible();
+  await expect(uploader.getByRole('alert').filter({hasText:'Dosya sunucuya ulaşmış olabilir.'})).toBeVisible();
+  await input.setInputFiles({name:'small.png',mimeType:'image/png',buffer:Buffer.from('test-only')});
+  await expect(page.locator('.asset-card')).toContainText('small.png');await expect(uploader.getByRole('alert')).toHaveCount(0);expect(uploads).toBe(2);
+});
+
 test('starting an upload closes the picker and ignores a same-event stale media selection',async({page})=>{
   const asset={id:'test-picked-media',filename:'existing-library.png',folder:'',tags:[],status:'ready',mime_type:'image/png',url:null,archived:false,width:1,height:1,size:10};
   let uploads=0,saves=0,release!:()=>void;
