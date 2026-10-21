@@ -1,9 +1,10 @@
 import {ChangeEvent,useEffect,useRef,useState} from 'react';
 import {UploadCloud,Loader2,FileVideo,Trash2,CheckCircle2,X} from 'lucide-react';
 import {toast} from 'sonner';
-import {companyHeader,authHeaders,apiUrl,mediaSrc} from './api';
+import {companyHeader,authHeaders,apiUrl,mediaSrc,bytes} from './api';
 import {t} from './i18n';
 import {UploadQueue} from './uploadQueue';
+import {mediaIsProcessing,mediaStatusLabel,readyMediaDetails} from './mediaPreviewState';
 
 const acceptedMedia='image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime,video/webm,.jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm';
 
@@ -44,7 +45,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
       </button>
       {onLibrary&&progress===null&&<button type="button" className="inline-link library-pick" disabled={disabled} onClick={onLibrary}>{t('veya medya kütüphanesinden seç')}</button>}
     </>:<div className={'asset-card '+(asset.status==='failed'?'asset-failed':'')}>
-      {asset.url&&asset.mime_type.startsWith('image')?<img src={mediaSrc(asset.url)} alt={t('Yüklenen görsel önizlemesi')}/>:<FileVideo size={35}/>}<div><strong>{asset.filename}</strong><span>{asset.status==='ready'?`${asset.width} × ${asset.height} · ${(asset.size/1024/1024).toFixed(1)} MB`:t(asset.status==='failed'?'Dosya hazırlanamadı':'Dosya hazırlanıyor…')}</span><p>{asset.error||asset.note}</p></div>{asset.status==='ready'?<CheckCircle2 className="ready-icon" size={18}/>:asset.status!=='failed'&&<Loader2 className="spin" size={18}/>}<button className="icon-button" title={t('Medyayı içerikten kaldır')} aria-label={t('Medyayı içerikten kaldır')} disabled={disabled||progress!==null} onClick={onRemove}><Trash2 size={17}/></button>
+      {asset.url&&asset.mime_type?.startsWith('image/')?<img src={mediaSrc(asset.url)} alt={t('Yüklenen görsel önizlemesi')}/>:<FileVideo size={35}/>}<div><strong>{asset.filename}</strong><span>{t(asset.status==='ready'?readyMediaDetails(asset,bytes):mediaStatusLabel(asset.status))}</span><p>{asset.error||asset.note}</p></div>{asset.status==='ready'?<CheckCircle2 className="ready-icon" size={18}/>:mediaIsProcessing(asset.status)&&<Loader2 className="spin" size={18}/>}<button className="icon-button" title={t('Medyayı içerikten kaldır')} aria-label={t('Medyayı içerikten kaldır')} disabled={disabled||progress!==null} onClick={onRemove}><Trash2 size={17}/></button>
     </div>}
     {progress!==null&&<button type="button" className="secondary" onClick={stop}><X size={16}/>{t('Yüklemeyi durdur')}</button>}
     {uploadError&&<p className="error" role="alert">{uploadError}</p>}
