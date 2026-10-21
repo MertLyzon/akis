@@ -21,6 +21,18 @@ test('a failed user choice is available to the UI error handler',async()=>{
   const choice=deferred();const result=requestInstall({prompt:()=>undefined,userChoice:choice.promise});
   choice.reject(Error('choice unavailable'));await assert.rejects(result,/choice unavailable/);
 });
+test('a choice failure is observed while opening the prompt is still pending',async()=>{
+  const opening=deferred(),choice=deferred(),failure=Error('early choice failure');
+  const result=requestInstall({prompt:()=>opening.promise,userChoice:choice.promise});
+  const rejected=assert.rejects(result,error=>error===failure);
+  choice.reject(failure);await new Promise(resolve=>setImmediate(resolve));
+  opening.resolve();await rejected;
+});
+test('a failed prompt does not leave a later choice rejection unhandled',async()=>{
+  const choice=deferred(),failure=Error('prompt failed first');
+  await assert.rejects(requestInstall({prompt:()=>Promise.reject(failure),userChoice:choice.promise}),error=>error===failure);
+  choice.reject(Error('choice failed later'));await new Promise(resolve=>setImmediate(resolve));
+});
 test('rapid install clicks start only one prompt and release the guard after choice',async()=>{
   const actions=new KeyedActions(),choice=deferred();let prompts=0;
   const prompt={prompt:()=>{prompts++},userChoice:choice.promise};
