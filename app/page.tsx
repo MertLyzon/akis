@@ -149,10 +149,12 @@ if(request.current.fingerprint!==fingerprint)request.current={fingerprint,id:cry
 const r=editing?await api('posts/'+editing,{...body,expected_updated_at:editingVersion.current},'PUT'):await api('posts',{...body,requestId:request.current.id});
 const outcome=r.outcome||(send?'approved':'draft');
 toast.success(t(outcome==='submitted'?'Onaya gönderildi. Yetkili onayladığında yayımlanacak.':outcome==='approved'?(schedule?'Planlandı. Belirlenen zamanda gönderilecek.':'Gönderim kuyruğuna eklendi. Akış arka planda devam ediyor.'):'Taslak kaydedildi.'));
-reset(false,true);if(!await refresh())toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'));setPostFilter(outcome==='submitted'?'pending_approval':outcome==='approved'&&schedule?'scheduled':'all');setView('posts');
+const savedPostId=editing||r.id;
+reset(false,true);if(!await refresh()){if(typeof savedPostId==='string'&&savedPostId)postReadBarrier.current.hold(savedPostId);toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'))}setPostFilter(outcome==='submitted'?'pending_approval':outcome==='approved'&&schedule?'scheduled':'all');setView('posts');
 }catch(e:any){toast.error(t(e.message));if(editing&&e.status===409){setEditConflict(true);await refresh()}}finally{saveInFlight.current=false;setBusy(false)}
 }
 function openDraft(p:any,copy=false,confirmed=false){
+if(postReadBarrier.current.has(p.id)){toast.warning(t('İşlem tamamlandı ancak gönderi listesi yenilenemedi. Listeyi tekrar yenile.'));return}
 if(!confirmed){replaceEditor(()=>openDraft(p,copy,true));return}
 const next={...emptyContent,text:p.text,platforms:p.platforms,asset_id:p.asset?.id||null,recipients:p.options.recipients||[],template:p.options.template||'',language:p.options.language||'tr',template_params:p.options.template_params||[],wa_mode:p.options.wa_mode||'template',scheduled_local:!copy&&p.scheduled_at&&p.scheduled_at>Date.now()/1000?zoneInput(p.scheduled_at,tz):''};
 editorBaseline.current=JSON.stringify(copy?emptyContent:next);
