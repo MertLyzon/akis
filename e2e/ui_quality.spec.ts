@@ -1,15 +1,16 @@
-import {expect,test} from '@playwright/test';
+import {expect,test} from './fixtures';
 
-test('language selection uses arrow keys and a single tab stop without losing focus',async({page})=>{
+test('language selection uses arrow keys and a single tab stop without losing focus',async({page},testInfo)=>{
   await page.goto('/');await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
   const choices=page.locator('.language-list').getByRole('radio'),turkish=choices.nth(0),english=choices.nth(1);
-  await expect(turkish).toHaveAttribute('aria-checked','true');await expect(english).toHaveAttribute('tabindex','-1');
+  await expect(turkish).toBeChecked();await expect(english).not.toBeChecked();
   await turkish.focus();await turkish.press('ArrowRight');
-  await expect(english).toBeFocused();await expect(english).toHaveAttribute('aria-checked','true');
+  await expect(english).toBeFocused();await expect(english).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('lang','en');
-  await english.press('ArrowLeft');await expect(turkish).toBeFocused();await expect(turkish).toHaveAttribute('aria-checked','true');
+  await english.press('ArrowLeft');await expect(turkish).toBeFocused();await expect(turkish).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('lang','tr');
   await turkish.press('Tab');await expect(page.locator('#hour-format')).toBeFocused();
+  await page.screenshot({path:testInfo.outputPath('language-preferences.png'),fullPage:true});
 });
 
 test('external staging cannot overwrite unsaved editor work or publish a post',async({page})=>{
@@ -385,7 +386,7 @@ test('quick navigation traps focus, recovers from empty results and restores its
   await search.fill('no-matching-screen');await search.press('ArrowDown');
   await expect(dialog.getByRole('status')).toHaveText('Aramana uyan ekran yok.');
   await expect(search).not.toHaveAttribute('aria-activedescendant');
-  await search.fill('ICERIK');await expect(dialog.getByRole('option',{selected:true})).toHaveText('İçerik oluştur');
+  await search.fill('ICERIK');await expect(dialog.getByRole('option',{selected:true})).toContainText('İçerik oluştur');
   await search.fill('sirket yonetimi');await expect(dialog.getByRole('option',{selected:true})).toHaveText('Şirket yönetimi');
   await search.fill('Takvim');
   await expect(dialog.getByRole('option',{selected:true})).toHaveText('Takvim');

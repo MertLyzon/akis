@@ -20,19 +20,21 @@
 .preference-panel label{display:flex;align-items:center;gap:7px;margin-top:18px}
 .preference-panel label:first-child{margin-top:0}
 .language-list{display:grid;grid-template-columns:1fr 1fr;margin-top:9px;border:1px solid #dfe3ee;border-radius:10px;overflow:hidden}
-.language-list button{display:flex;align-items:center;gap:10px;border:0;background:#fff;color:#6b7185;padding:12px 14px;text-align:left}
-.language-list button+button{border-left:1px solid #dfe3ee}
-.language-list button strong{display:grid;place-items:center;width:31px;height:25px;border-radius:6px;background:#f0f1f6;color:#5e6477;font-size:11px}
-.language-list button.active{background:#f3f0ff;color:#5945e8}
-.language-list button.active strong{background:#5945e8;color:#fff}
+.preference-panel .language-list label{position:relative;display:flex;align-items:center;gap:10px;margin:0;border:0;background:#fff;color:#6b7185;padding:12px 14px;text-align:left;cursor:pointer}
+.preference-panel .language-list label+label{border-left:1px solid #dfe3ee}
+.language-list input[type=radio]{position:absolute;width:1px;height:1px;padding:0;margin:0;border:0;clip-path:inset(50%);overflow:hidden;white-space:nowrap}
+.language-list label:focus-within{outline:2px solid #8272ed;outline-offset:-3px}
+.language-list label strong{display:grid;place-items:center;width:31px;height:25px;border-radius:6px;background:#f0f1f6;color:#5e6477;font-size:11px}
+.preference-panel .language-list label.active{background:#f3f0ff;color:#5945e8}
+.language-list label.active strong{background:#5945e8;color:#fff}
 .language-quick{display:flex;border:1px solid #dfe3ee;border-radius:7px;overflow:hidden}
 .language-quick button{border:0;background:transparent;color:#8b91a3;padding:4px 6px;font-size:10px;font-weight:700}
 .language-quick button[aria-pressed=true]{background:#5945e8;color:#fff}
-:root[data-theme=dark] .language-list,:root[data-theme=dark] .language-list button+button,:root[data-theme=dark] .language-quick{border-color:#343748}
-:root[data-theme=dark] .language-list button{background:#1b1d27;color:#b3b8cc}
-:root[data-theme=dark] .language-list button strong{background:#262838;color:#b3b8cc}
-:root[data-theme=dark] .language-list button.active{background:#2a2645;color:#c3baff}
-:root[data-theme=dark] .language-list button.active strong,:root[data-theme=dark] .language-quick button[aria-pressed=true]{background:#6f5cf5;color:#fff}
+:root[data-theme=dark] .language-list,:root[data-theme=dark] .language-list label+label,:root[data-theme=dark] .language-quick{border-color:#343748}
+:root[data-theme=dark] .language-list label{background:#1b1d27;color:#b3b8cc}
+:root[data-theme=dark] .language-list label strong{background:#262838;color:#b3b8cc}
+:root[data-theme=dark] .language-list label.active{background:#2a2645;color:#c3baff}
+:root[data-theme=dark] .language-list label.active strong,:root[data-theme=dark] .language-quick button[aria-pressed=true]{background:#6f5cf5;color:#fff}
 .sub{font-size:13px;margin:18px 0 10px;color:#5d6378}
 select{font:inherit;font-size:14px;color:#252a40;background:#fff;border:1px solid #dfe3ee;border-radius:9px;padding:10px 12px}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;align-items:end}
