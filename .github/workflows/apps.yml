@@ -52,26 +52,8 @@ jobs:
       - uses: actions/setup-node@v5
         with: {node-version: 22, cache: npm}
       - run: npm ci && npm run build
-      - name: Upload queue tests
-        run: npm run test:uploads
-      - name: Library request guards
-        run: npm run test:library
-      - name: Team action and clipboard guards
-        run: npm run test:team
-      - name: Settings save guards
-        run: npm run test:settings
-      - name: Connection draft and OAuth guards
-        run: npm run test:connections
-      - name: Account security guards
-        run: npm run test:account
-      - name: Login and invitation guards
-        run: npm run test:auth
-      - name: System maintenance guards
-        run: npm run test:system
-      - name: Navigation safety guards
-        run: npm run test:navigation
-      - name: Request deadlines
-        run: npm run test:requests
+      - name: All frontend unit and guard tests
+        run: npm run test:unit
       - name: Install browser smoke-test runtime
         run: npx playwright install --with-deps chromium
       - name: Browser smoke tests

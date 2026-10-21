@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc --noEmit && vite build",
+    "test": "npm run test:unit",
+    "test:unit": "node scripts/run-unit-tests.mjs",
     "test:e2e": "playwright test",
     "test:uploads": "node --experimental-strip-types --test scripts/upload_queue.test.mjs",
     "test:library": "node --experimental-strip-types --test scripts/library_requests.test.mjs",
