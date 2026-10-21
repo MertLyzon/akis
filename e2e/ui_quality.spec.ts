@@ -1,5 +1,17 @@
 import {expect,test} from '@playwright/test';
 
+test('language selection uses arrow keys and a single tab stop without losing focus',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'Ayarlar',exact:true}).click();
+  const choices=page.locator('.language-list').getByRole('radio'),turkish=choices.nth(0),english=choices.nth(1);
+  await expect(turkish).toHaveAttribute('aria-checked','true');await expect(english).toHaveAttribute('tabindex','-1');
+  await turkish.focus();await turkish.press('ArrowRight');
+  await expect(english).toBeFocused();await expect(english).toHaveAttribute('aria-checked','true');
+  await expect(page.locator('html')).toHaveAttribute('lang','en');
+  await english.press('ArrowLeft');await expect(turkish).toBeFocused();await expect(turkish).toHaveAttribute('aria-checked','true');
+  await expect(page.locator('html')).toHaveAttribute('lang','tr');
+  await turkish.press('Tab');await expect(page.locator('#hour-format')).toBeFocused();
+});
+
 test('external staging cannot overwrite unsaved editor work or publish a post',async({page})=>{
   await page.addInitScript(()=>Object.defineProperty(document,'modelContext',{configurable:true,value:{registerTool(tool:any){if(tool.name==='stage_content')(window as any).testStageContent=tool.execute}}}));
   let writes=0;
