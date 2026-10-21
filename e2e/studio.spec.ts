@@ -247,6 +247,31 @@ for(const [kind,status,label] of [['delete','draft','Sil'],['cancel','scheduled'
   await expect(modal).toBeHidden();expect(requests).toBe(2);
 });
 
+test('a confirmed editor save locks the stale post when its following refresh fails',async({page})=>{
+  await page.goto('/');
+  const created=await page.request.post('/api/posts',{data:{requestId:crypto.randomUUID(),text:'Original editor refresh fixture',platforms:['x']}});
+  const id=(await created.json()).id,snapshot=await (await page.request.get('/api/state')).json();
+  const post=snapshot.posts.find((item:any)=>item.id===id);post.scheduled_at=Math.floor(Date.now()/1000);let writes=0,recovered=false;
+  await page.route('**/api/state',route=>writes&&!recovered?route.fulfill({status:503,json:{error:'Editor state refresh unavailable'}}):route.fulfill({json:snapshot}));
+  await page.route(`**/api/posts/${id}`,route=>{
+    expect(route.request().method()).toBe('PUT');writes++;post.text='Confirmed editor refresh fixture';post.updated_at+=1;
+    return route.fulfill({json:{id,outcome:'draft'}});
+  });
+  await page.reload();await page.getByRole('button',{name:/^Gönderiler/}).click();await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  const oldCard=page.locator('article').filter({hasText:'Original editor refresh fixture'});
+  await oldCard.getByRole('button',{name:'Düzenle',exact:true}).click();
+  await page.locator('#content').fill('Confirmed editor refresh fixture');await page.getByRole('button',{name:'Taslağı kaydet',exact:true}).click();
+  const retry=page.getByRole('button',{name:'Listeyi yenile',exact:true});await expect(retry).toBeVisible();
+  await expect(oldCard.getByRole('button',{name:'Düzenle',exact:true})).toBeDisabled();expect(writes).toBe(1);
+  await page.getByRole('button',{name:'Takvim',exact:true}).click();
+  await page.locator('.calendar').getByRole('button',{name:/Original editor refresh fixture/}).click();
+  await expect(page.locator('.calendar')).toBeVisible();await expect(page.locator('#content')).toHaveCount(0);
+  await page.getByRole('button',{name:/^Gönderiler/}).click();await page.getByRole('tab',{name:'Tümü',exact:true}).click();
+  recovered=true;await retry.click();await expect(retry).toHaveCount(0);
+  await expect(page.locator('article').filter({hasText:'Confirmed editor refresh fixture'}).getByRole('button',{name:'Düzenle',exact:true})).toBeEnabled();
+  expect(writes).toBe(1);
+});
+
 test('a confirmed approval hold survives navigation and retry only reads after failed refresh',async({page})=>{
   await page.goto('/');const ids:string[]=[];
   for(const name of ['A','B']){
