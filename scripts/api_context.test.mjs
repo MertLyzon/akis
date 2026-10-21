@@ -57,6 +57,30 @@ async function runtime(t,native=false){
 }
 function json(data,status=200,tag){return Response.json(data,{status,headers:tag?{ETag:tag}:{}})}
 
+test('device-local diagnostics honor 12/24-hour and language preferences without changing timezone',async t=>{
+  const {api,stored,calls}=await runtime(t);
+  const stamp=Date.parse('2030-05-10T15:25:31Z')/1000;
+  const zone=new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  for(const language of ['tr','en']){
+    stored.set('akis-language',language);
+    for(const format of ['12','24']){
+      api.saveHourFormat(format);
+      const value=api.inDeviceTime(stamp,{timeStyle:'medium'});
+      assert.equal(value,api.inZone(stamp,zone,{timeStyle:'medium'}));
+      assert.equal(/AM|PM/.test(value),format==='12');
+      assert.equal(value.includes('ÖÖ')||value.includes('ÖS'),false);
+    }
+  }
+  assert.equal(api.inDeviceTime(null),'');assert.equal(api.inDeviceTime(undefined),'');
+  assert.equal(calls.length,0);
+});
+
+test('date-only diagnostics do not gain a clock when the 12-hour preference is enabled',async t=>{
+  const {api,stored}=await runtime(t);stored.set('akis-language','tr');api.saveHourFormat('12');
+  const value=api.inDeviceTime(Date.parse('2030-05-10T15:25:31Z')/1000,{dateStyle:'medium'});
+  assert.equal(/AM|PM|\d:\d/.test(value),false);
+});
+
 test('changing server clears native credentials and company before any later request',async t=>{
   const {api,calls,stored}=await runtime(t,true);api.setServer('https://old.example');
   api.setToken('old-token');api.setCompany('old-company');api.setServer('https://new.example');

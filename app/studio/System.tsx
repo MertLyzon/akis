@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {AlertDialog,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {Server,Building2,Activity,AlertTriangle,DatabaseBackup,CheckCircle2,XCircle,MinusCircle,Copy,Globe,ShieldCheck,RefreshCw,Loader2} from 'lucide-react';
 import {toast} from 'sonner';
-import {api,bytes,platforms,statuses,outcomes,stages} from './api';
+import {api,bytes,platforms,statuses,outcomes,stages,inDeviceTime} from './api';
 import {locale,t} from './i18n';
 import {KeyedActions,LatestRequest} from './libraryRequests';
 import {copyToClipboard} from './clipboard';
@@ -14,7 +14,7 @@ import type {SystemCompanyDraft} from './systemDraft';
 import {pollWhileActive} from './foregroundPolling';
 
 function Health({label,value,detail,stale=false}:any){const checked=stale?undefined:value;const Icon=checked===true?CheckCircle2:checked===false?XCircle:MinusCircle;return <div className={'health '+(checked===true?'ok':checked===false?'bad':'off')}><Icon size={18} aria-hidden="true"/><div><strong>{label}</strong><span className="health-state">{t(stale?'Güncel durum bilinmiyor':checked===true?'Kontrol başarılı':checked===false?'Kontrolde sorun var':'Bilgi yok / kullanılmıyor')}</span><small>{detail}</small></div></div>}
-const date=(value:number)=>value?new Date(value*1000).toLocaleString(locale()):'';
+const date=(value:number)=>inDeviceTime(value);
 const heartbeat=(value:number|null,checked:number)=>value?t('{seconds} saniye önce sinyal verdi',{seconds:Math.max(0,checked-value)}):t('Henüz sinyal alınmadı');
 const latency=(value:any)=>typeof value==='number'?` · ${value.toLocaleString(locale(),{maximumFractionDigits:1})} ms`:'';
 
