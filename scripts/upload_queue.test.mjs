@@ -61,6 +61,15 @@ test('rapid additions deduplicate active and waiting files and run sequentially'
   assert.equal(h.queue.isBusy,false);
   assert.deepEqual(h.states.at(-1),{progress:null,queued:0});
 });
+test('an oversized-only selection does not clear an earlier uncertain upload warning',()=>{
+  let warning='';
+  const h=harness({onBusy:busy=>{if(busy)warning=''},onError:message=>{warning=message}});
+  h.queue.enqueue([file('uncertain.png')],context);h.requests[0].onerror();
+  const original=warning;assert.match(original,/sunucuya ulaşmış olabilir/);
+  assert.equal(h.queue.enqueue([new File([new Uint8Array(2048)],'large.png')],context).oversized,1);
+  assert.equal(warning,original);assert.equal(h.requests.length,1);
+  h.queue.enqueue([file('replacement.png')],context);assert.equal(warning,'');assert.equal(h.requests.length,2);
+});
 
 test('single-file mode cannot start another request before the first finishes',()=>{
   const h=harness(),options={...context,multiple:false};

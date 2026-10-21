@@ -12,13 +12,14 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
   const input=useRef<HTMLInputElement>(null),mounted=useRef(true);
   const [progress,setProgress]=useState<number|null>(null),[drag,setDrag]=useState(false),[queued,setQueued]=useState(0);
   const [uploadError,setUploadError]=useState('');
+  const [selectionError,setSelectionError]=useState('');
   const callbacks=useRef({onUploaded,onBusy,multiple,disabled,canUpload});
   callbacks.current={onUploaded,onBusy,multiple,disabled,canUpload};
   const uploader=useRef<UploadQueue|null>(null);
   if(!uploader.current)uploader.current=new UploadQueue({
     canEnqueue:()=>!callbacks.current.disabled&&callbacks.current.canUpload?.()!==false,
     onChange:state=>{if(mounted.current){setProgress(state.progress);setQueued(state.queued);if(state.progress===null&&input.current)input.current.value=''}},
-    onBusy:busy=>{if(busy&&mounted.current)setUploadError('');callbacks.current.onBusy?.(busy)},
+    onBusy:busy=>{if(busy&&mounted.current){setUploadError('');setSelectionError('')}callbacks.current.onBusy?.(busy)},
     onSuccess:(result,file)=>{callbacks.current.onUploaded(result);toast.success(callbacks.current.multiple?`${file.name} ${t('yüklendi.')}`:t('Dosya yüklendi, paylaşım için hazırlanıyor.'))},
     onError:(message,file,skipped)=>{const warning=(callbacks.current.multiple?`${file.name}: `:'')+t(message)+(skipped?' '+t('Kuyruktaki {count} dosya başlatılmadı.',{count:skipped}):'');if(mounted.current)setUploadError(warning);toast.error(warning)},
   });
@@ -27,7 +28,7 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
   function enqueue(files:File[]){
     if(disabled)return;
     const result=uploader.current!.enqueue(files,{url:apiUrl('media'),headers:{...companyHeader(),...authHeaders()},maxBytes:maxMB*1024*1024,multiple});
-    if(result.oversized)toast.error(t('{count} dosya {max} MB sınırını aştığı için atlandı.',{count:result.oversized,max:maxMB}));
+    if(result.oversized){const warning=t('{count} dosya {max} MB sınırını aştığı için atlandı.',{count:result.oversized,max:maxMB});setSelectionError(warning);toast.error(warning)}
     if(result.duplicates)toast.info(t('{count} dosya zaten yükleme sırasında olduğu için tekrar eklenmedi.',{count:result.duplicates}));
   }
   function choose(){
@@ -49,5 +50,6 @@ export default function MediaUpload({asset,onUploaded,onRemove,onBusy,maxMB=100,
     </div>}
     {progress!==null&&<button type="button" className="secondary" onClick={stop}><X size={16}/>{t('Yüklemeyi durdur')}</button>}
     {uploadError&&<p className="error" role="alert">{uploadError}</p>}
+    {selectionError&&<p className="error" role="alert">{selectionError}</p>}
   </div>
 }
