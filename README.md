@@ -135,6 +135,9 @@ Tüm ön yüz birim ve koruma testleri `npm test` veya `npm run test:unit` ile �
 Çalıştırıcı `scripts/*.test.mjs` dosyalarını otomatik bulur; yeni testler CI listesine
 ayrıca eklenmez. Windows ve Unix aynı dosya listesini kullanır; boş test listesi
 başarı sayılmaz. Yukarıdaki konu bazlı komutlar hızlı, dar kapsamlı kontroller için korunur.
+Çeviri kontrolleri sabit `t(...)` arayüz metinlerini ve koşullu mesajları İngilizce
+sözlükle karşılaştırır; çevirilerdeki adlandırılmış değişkenlerin korunmasını ve
+dosya adları gibi kullanıcı değerlerinin değiştirilmeden yerleştirilmesini doğrular.
 
 İşlenen medya takibi ve sistem durumu yenilemesi sekme gizliyken veya cihaz
 çevrimdışıyken sorgu göndermez. Ekrana dönüldüğünde/bağlantı geldiğinde hemen bir

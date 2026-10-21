@@ -1,6 +1,18 @@
 export type Language='tr'|'en';
 
 const english:Record<string,string>={
+  'Onaya gönderildi. Yetkili onayladığında yayımlanacak.':'Submitted for review. It will be published after an authorized person approves it.',
+  'Taslak kaydedildi.':'Draft saved.',
+  'OAuth 2.0 kullanıcı erişim anahtarı':'OAuth 2.0 user access token',
+  'Değiştirmeyeceksen boş bırak':'Leave blank to keep the current value',
+  'Kayıtlı · değiştirmek için yaz':'Saved · enter a value to replace it',
+  'Arşivden çıkarıldı.':'Restored from archive.',
+  'Arşivlendi.':'Archived.',
+  'Onaylandı, planlanan zamanda gönderilecek.':'Approved. It will be sent at the scheduled time.',
+  'Onaylandı, gönderim başladı.':'Approved. Delivery has started.',
+  'Yedekleniyor…':'Backing up…',
+  'Medya Cloudinary üzerinden sunulduğu için Instagram bu adrese ihtiyaç duymaz. OAuth dönüşleri ve kendi alan adın için yine de ayarlayabilirsin.':'Instagram does not need this address because media is served through Cloudinary. You can still set it for OAuth callbacks and your own domain.',
+  'Instagram görsel ve videoları bu adresten okur. Yerel adresler (localhost) çalışmaz.':'Instagram reads images and videos from this address. Local addresses (localhost) do not work.',
   'Önizleme yüklenemedi.':'The preview could not be loaded.',
   'Önizleme bağlantısı yok.':'No preview URL is available.',
   'Bu yalnızca önizleme hatasıdır; dosya kaydı değiştirilmedi.':'This is only a preview error; the file record has not been changed.',
@@ -213,4 +225,8 @@ export function readLanguage():Language{try{return localStorage.getItem('akis-la
 export function saveLanguage(language:Language){try{localStorage.setItem('akis-language',language)}catch{}document.documentElement.lang=language}
 export function applyLanguage(){document.documentElement.lang=readLanguage()}
 export function locale(){return readLanguage()==='en'?'en-US':'tr-TR'}
-export function t(text:string,vars:Record<string,string|number>={}){let value=readLanguage()==='en'?(english[text]||text):text;for(const [key,replacement] of Object.entries(vars))value=value.replaceAll(`{${key}}`,String(replacement));return value}
+export function t(text:string,vars:Record<string,string|number>={}){
+  const value=readLanguage()==='en'&&Object.prototype.hasOwnProperty.call(english,text)?english[text]:text;
+  // One pass: filenames and other user values are literal, not replacement patterns or templates.
+  return value.replace(/\{([a-zA-Z0-9_]+)\}/g,(match,key)=>Object.prototype.hasOwnProperty.call(vars,key)?String(vars[key]):match);
+}
