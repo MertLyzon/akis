@@ -566,10 +566,18 @@ def list_media(folder:str='',tag:str='',q:str='',archived:bool=False,actor=Depen
         if folder: query=query.where(MediaAsset.folder==folder)
         # % and _ typed by the user are literal characters, not wildcards.
         if q: query=query.where(MediaAsset.filename.ilike('%'+like_escape(q)+'%',escape='\\'))
-        query=query.order_by(MediaAsset.created_at.desc())
+        query=query.order_by(MediaAsset.created_at.desc(),MediaAsset.id.desc())
         # Tags live in a JSON list; filter before the 500 cap so older tagged files are still found.
-        found=db.scalars(query if tag else query.limit(500))
-        items=[asset_json(a,db) for a in found if not tag or tag in (a.tags or [])][:500]
+        # Stream tagged scans in bounded batches and stop serializing at the visible cap.
+        # Limiting before the JSON-tag check would hide older matching files.
+        found=db.scalars(query.execution_options(yield_per=100) if tag else query.limit(500))
+        items=[]
+        try:
+            for a in found:
+                if tag and tag not in (a.tags or []): continue
+                items.append(asset_json(a,db))
+                if len(items)>=500: break
+        finally: found.close()
         folders=sorted(db.scalars(select(MediaAsset.folder).where(MediaAsset.company_id==actor.company_id,MediaAsset.variant=='source',MediaAsset.folder!='').distinct()))
         return {'items':items,'folders':folders}
 
