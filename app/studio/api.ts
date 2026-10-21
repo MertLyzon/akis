@@ -68,6 +68,10 @@ export function readHourFormat():HourFormat{try{return localStorage.getItem('aki
 export function saveHourFormat(value:HourFormat){try{localStorage.setItem('akis-hour-format',value)}catch{}}
 // Unix seconds → text in the company's timezone, so everyone on the team sees the same schedule.
 export function inZone(stamp:number|null|undefined,tz:string,opts:Intl.DateTimeFormatOptions={dateStyle:'medium',timeStyle:'short'}){if(!stamp)return '';const twelve=readHourFormat()==='12',clock=opts.timeStyle||opts.hour?{hour12:twelve}:{};const language=(()=>{try{return localStorage.getItem('akis-language')==='en'?'en-US':'tr-TR'}catch{return 'tr-TR'}})();try{const formatter=new Intl.DateTimeFormat(language,{...opts,...clock,timeZone:tz}),date=new Date(stamp*1000);return twelve&&language==='tr-TR'?formatter.formatToParts(date).map(p=>p.type==='dayPeriod'?(p.value.toLocaleUpperCase('tr-TR').includes('ÖÖ')?'AM':'PM'):p.value).join(''):formatter.format(date)}catch{return new Date(stamp*1000).toLocaleString(language)}}
+// Device-local diagnostics keep their existing timezone, but honor the same language/hour preference.
+export function inDeviceTime(stamp:number|null|undefined,opts:Intl.DateTimeFormatOptions={dateStyle:'medium',timeStyle:'short'}){
+  return inZone(stamp,new Intl.DateTimeFormat().resolvedOptions().timeZone,opts);
+}
 // Unix seconds → 'YYYY-MM-DDTHH:MM' wall-clock in the company's timezone (for datetime-local inputs).
 export function zoneInput(stamp:number|null|undefined,tz:string){if(!stamp)return '';const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(stamp*1000)).map(p=>[p.type,p.value]));return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`}
 export function bytes(n:number){if(!n)return '0 MB';if(n<1024*1024)return (n/1024).toFixed(0)+' KB';if(n<1024**3)return (n/1024/1024).toFixed(1)+' MB';return (n/1024**3).toFixed(2)+' GB'}

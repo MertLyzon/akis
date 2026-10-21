@@ -1431,6 +1431,7 @@ test('language and hour-format preferences survive a reload',async({page})=>{
   await page.getByRole('button',{name:'Ayarlar'}).click();
   await expect(page.getByRole('heading',{name:'Dil ve saat'})).toBeVisible();
   await page.locator('#hour-format').selectOption('12');
+  await expect(page.locator('.sync-status')).toHaveAttribute('title',/AM|PM/);
   await page.getByText('İngilizce',{exact:true}).click();
   await expect(page.getByRole('heading',{name:'Language and time'})).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang','en');
@@ -1438,6 +1439,9 @@ test('language and hour-format preferences survive a reload',async({page})=>{
   await page.getByRole('button',{name:'Settings'}).click();
   await expect(page.locator('#hour-format')).toHaveValue('12');
   await expect(page.locator('html')).toHaveAttribute('lang','en');
+  await expect(page.locator('.sync-status')).toHaveAttribute('title',/AM|PM/);
+  await page.locator('#hour-format').selectOption('24');
+  await expect(page.locator('.sync-status')).not.toHaveAttribute('title',/AM|PM/);
 });
 
 test('a draft can be created from the studio',async({page})=>{
