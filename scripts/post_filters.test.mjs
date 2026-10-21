@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {filterPosts,matchesPost,nextPostFilter,postMediaStatus} from '../app/studio/postFilters.ts';
+import {filterPosts,matchesPost,nextPostFilter} from '../app/studio/postFilters.ts';
+import {postMediaStatus} from '../app/studio/mediaPreviewState.ts';
 
 const posts=[
   {id:'a',status:'draft',text:'İSTANBUL planı',created_by:'Mert',options:{}},
@@ -36,4 +37,8 @@ test('ready media is not described as still processing and server notes are pres
   assert.equal(postMediaStatus({status:'failed'}),'Hazırlanamadı');
   assert.equal(postMediaStatus({status:'processing'}),'Hazırlanıyor…');
   assert.equal(postMediaStatus({status:'ready',note:'Converted without cropping'}),'Converted without cropping');
+});
+test('post media uses the same unknown-state policy as the library instead of inventing processing',()=>{
+  for(const status of [undefined,'unexpected',''])assert.equal(postMediaStatus({status}),'Durum bilinmiyor.');
+  for(const status of ['processing','queued','converting'])assert.equal(postMediaStatus({status}),'Hazırlanıyor…');
 });
