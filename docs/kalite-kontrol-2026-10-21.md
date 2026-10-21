@@ -1,7 +1,7 @@
 # Akış kalite kontrolü — 21 Ekim 2026
 
 Bu rapor, 0.4.0 üzerindeki bu geliştirme oturumunun doğrulanmış kapsamını kaydeder.
-Son kod grubu: `ef317dd` (kurulum penceresinin bağımsız hata yanıtları).
+Son kod grubu: API hata yanıtlarının güvenli biçimlendirilmesi (bu raporla aynı değişiklik grubu).
 Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zamanlanmış iş eklenmedi.
 
 ## Güvenilirlik ve kullanıcı deneyimi
@@ -27,6 +27,9 @@ Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zam
 - Eksik İngilizce sabit mesajlar tamamlandı. Kullanıcı değerleri mesajlara tek
   geçişte, değişmeden eklenir; özel değiştirme karakterleri ve başka değişken adları
   dosya adını bozmaz. Bilinmeyen sözlük anahtarları prototip alanlarına dönüşmez.
+- Beklenmedik nesne/dizi biçimindeki API hata alanları ham olarak gösterilmez;
+  HTTP durum kodu korunur ve güvenli genel mesaj kullanılır. Yalnızca dolu metin
+  biçimindeki destek kodları mesajlara eklenir.
 
 ## Sınırlı kaynakların korunması
 
@@ -50,7 +53,7 @@ Yeni bir ücretli servis, paket bağımlılığı, veritabanı şeması veya zam
 
 ## Gerçekten çalıştırılan kontroller
 
-- `npm test`: **415 test geçti**, başarısız/atlanan yok.
+- `npm test`: **417 test geçti**, başarısız/atlanan yok.
 - `npm run build`: TypeScript kontrolü ve Vite üretim derlemesi geçti.
 - `.venv/bin/python -m pytest -q`: **252 test geçti, 1 test atlandı**; geçici SQLite.
 - `git diff --check`: geçti.

@@ -36,7 +36,11 @@ export async function checkServer(url:string){const base=normalizeServerAddress(
 export async function openExternal(url:string){if(isApp){const {openUrl}=await import('@tauri-apps/plugin-opener');await openUrl(url)}else window.open(url,'_blank','noopener')}
 
 export class ApiError extends Error{data:any;status:number;constructor(message:string,status:number,data:any){super(message);this.status=status;this.data=data}}
-function errorMessage(data:any){const message=t(data?.error||'İşlem tamamlanamadı.');return data?.support_code?`${message} ${t('Destek kodu')}: ${data.support_code}`:message}
+function errorMessage(data:any){
+  const source=typeof data?.error==='string'&&data.error.trim()?data.error.trim():'İşlem tamamlanamadı.';
+  const message=t(source),code=typeof data?.support_code==='string'?data.support_code.trim():'';
+  return code?`${message} ${t('Destek kodu')}: ${code}`:message;
+}
 export async function api(path:string,body?:any,method?:string){
 const revision=authRevision,verb=method||(body?'POST':'GET');let r:Response,j:any;
 const readOnly=['GET','HEAD'].includes(verb.toUpperCase());

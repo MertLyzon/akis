@@ -147,6 +147,26 @@ test('valid server error responses preserve status, message and support code for
     assert.equal(calls.length,index+1);
   }
 });
+test('malformed JSON error fields keep the HTTP error classification without exposing raw objects',async t=>{
+  const {api,calls}=await runtime(t);
+  for(const payload of [null,[],{error:{}},{error:['test-only-internal-detail']},{error:true},{error:42},{error:''},{error:'   '}]){
+    const index=calls.length,writing=api.api('posts/test',{},'PATCH');
+    const rejected=assert.rejects(writing,error=>error instanceof api.ApiError&&error.status===400&&error.message==='İşlem tamamlanamadı.');
+    calls[index].resolve(json(payload,400));await rejected;
+    assert.equal(calls.length,index+1);
+  }
+});
+test('only nonempty string support codes are displayed in error messages',async t=>{
+  const {api,calls}=await runtime(t);
+  for(const support_code of [null,{},[],true,123,'','   ']){
+    const index=calls.length,reading=api.api('session');
+    const rejected=assert.rejects(reading,error=>error instanceof api.ApiError&&error.status===503&&error.message==='Test rejection');
+    calls[index].resolve(json({error:'Test rejection',support_code},503));await rejected;
+  }
+  const reading=api.api('session'),index=calls.length-1;
+  const rejected=assert.rejects(reading,error=>error.message==='Test rejection Destek kodu: test-code');
+  calls[index].resolve(json({error:'  Test rejection  ',support_code:' test-code '},503));await rejected;
+});
 test('an unconfirmed native write neither clears authentication nor installs a token from an unreadable response',async t=>{
   const {api,calls,stored}=await runtime(t,true);api.setToken('current-token');
   const writing=api.api('connections',{token:'test-only-platform-key'});
