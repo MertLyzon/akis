@@ -164,6 +164,17 @@ def enqueue_content(content_id):
         jobs=claim_deliveries(db,content_id=content_id)
     enqueue_deliveries(jobs)
 
+def enqueue_media(asset_id):
+    """Send a newly uploaded asset to the broker without waiting for recovery polling."""
+    if settings.queue_mode!='celery': return
+    with Session() as db:
+        ids=claim_media(db,limit=1,asset_id=asset_id)
+    for identifier in ids:
+        try: process_media.delay(identifier)
+        except Exception:
+            release_media(identifier)
+            log.warning('Broker unavailable; media %s returned to the outbox',identifier)
+
 def claim_deliveries(db,limit=100,content_id=None):
     """Move due outbox rows to a durable broker-bound state before publishing tasks."""
     current=now()
@@ -179,9 +190,11 @@ def claim_deliveries(db,limit=100,content_id=None):
     db.commit()
     return claimed
 
-def claim_media(db,limit=20):
+def claim_media(db,limit=20,asset_id=None):
     current=now()
-    candidates=list(db.scalars(select(MediaAsset.id).where(MediaAsset.status=='processing').order_by(MediaAsset.created_at,MediaAsset.id).limit(limit)))
+    query=select(MediaAsset.id).where(MediaAsset.status=='processing')
+    if asset_id: query=query.where(MediaAsset.id==asset_id)
+    candidates=list(db.scalars(query.order_by(MediaAsset.created_at,MediaAsset.id).limit(limit)))
     claimed=[]
     for identifier in candidates:
         changed=db.execute(update(MediaAsset).where(MediaAsset.id==identifier,MediaAsset.status=='processing').values(status='queued',updated_at=current)).rowcount

@@ -512,7 +512,7 @@ def save_public(data:PublicInput,actor=Depends(current_user)):
 # ---------- Media library ----------
 
 @app.post('/api/media',status_code=202)
-async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
+async def upload(background:BackgroundTasks,file:UploadFile=File(...),actor=Depends(require('media'))):
     identifier=str(uuid4());path=path_for(identifier+'.upload');size=0
     try:
         with path.open('wb') as target:
@@ -547,6 +547,8 @@ async def upload(file:UploadFile=File(...),actor=Depends(require('media'))):
             if quota and used+size>quota: raise HTTPException(413,'Şirket medya depolama sınırına ulaşıldı. Kullanılmayan medyayı silip tekrar dene.')
             a=MediaAsset(id=identifier,company_id=actor.company_id,uploaded_by=actor.user_id,filename=(''.join(ch for ch in Path(file.filename or '').name if ch.isprintable())[:240] or 'medya'),storage_key=path.name,mime_type=mime,size=size,status='processing')
             db.add(a);audit(db,actor,'media.uploaded','media',identifier,filename=a.filename,size=size);db.commit();result=asset_json(a,db)
+        from .jobs import enqueue_media
+        background.add_task(enqueue_media,identifier)
         return result
     except Exception:
         path.unlink(missing_ok=True);raise
@@ -826,14 +828,17 @@ def delete_content(identifier:str,data:ContentVersionInput|None=None,actor=Depen
 
 class RetryInput(BaseModel): delivery_id:str
 @app.post('/api/retry')
-def retry(data:RetryInput,actor=Depends(require('approve'))):
+def retry(data:RetryInput,background:BackgroundTasks,actor=Depends(require('approve'))):
     with Session() as db:
         row=db.get(ContentPlatform,data.delivery_id);p=db.get(Content,row.content_id) if row else None
         if not row or not p or p.company_id!=actor.company_id: raise HTTPException(404,'Gönderi bulunamadı.')
         if row.status!='failed': raise HTTPException(400,'Yalnızca kesin başarısız gönderimler yeniden denenebilir.')
         changed=db.execute(update(ContentPlatform).where(ContentPlatform.id==row.id,ContentPlatform.status=='failed').values(status='pending',next_attempt_at=now(),retry_count=0,error_code=None,error_message=None,final_request_started=False)).rowcount
         if changed!=1: raise HTTPException(409,'İçerik bu sırada değişti. Listeyi yenileyip güncel içerik üzerinden tekrar dene.')
-        p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();return {'ok':True}
+        p.status='processing';audit(db,actor,'delivery.retried','delivery',row.id,platform=row.platform);db.commit();content_id=p.id
+    from .jobs import enqueue_content
+    background.add_task(enqueue_content,content_id)
+    return {'ok':True}
 
 # The public launcher builds the Vite app before starting Uvicorn. Serving that
 # immutable build here keeps the development server off the public internet.

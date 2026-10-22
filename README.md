@@ -87,6 +87,15 @@ tek eşzamanlı düşük bellekli Celery worker ve Celery Beat süreçlerini bir
 yeniden başlatılır. Bu düzen tek API replikası içindir; API yatay ölçeklenecekse
 worker ve Beat yeniden ayrı servislere taşınmalıdır.
 
+Neon Free gibi boşta kalınca uyuyan PostgreSQL hizmetlerinde kurtarma taraması ve
+token bakımı altı dakikada bir, aynı UTC dakika sınırında çalışır; boşta arayüz
+yenilemesi de bu aralığa hizalanır. Kullanıcı işlemleri (medya yükleme ve yeniden
+deneme dahil) kuyruğa doğrudan verilir; işlem sürerken arayüz dört saniyede bir
+yenilenmeye devam eder. Broker'a ulaşılamayan veya Beat/worker kesintisinde kaçan
+işler sonraki taramada toparlanır; bu nedenle planlı gönderi ve kurtarma işleri
+tarama devreye girerse en fazla yaklaşık altı dakika geç başlayabilir. Bu ayar
+boşta veritabanı çalışmasını azaltır, ancak Neon kotası için mutlak garanti vermez.
+
 `/api/health` hafif canlılık kontrolüdür. `/api/ready` ise veritabanını, Redis'i,
 medya depolamasını ve Worker/Beat süreçlerinin Redis'e yazdığı kısa ömürlü
 heartbeat kayıtlarını denetler; gerekli bir bileşen hazır değilse HTTP 503 döner.

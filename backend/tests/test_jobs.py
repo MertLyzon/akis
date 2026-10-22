@@ -92,3 +92,36 @@ def test_dispatch_prioritizes_oldest_due_work(client,monkeypatch):
     dispatch();dispatch();dispatch()
     assert deliveries==[f'delivery-{index:03}' for index in range(105)]
     assert media==[f'asset-{index:03}' for index in range(25)]
+
+def test_idle_recovery_sweeps_allow_neon_to_suspend():
+    from akis.queue import IDLE_DATABASE_SWEEP_SECONDS,IDLE_DATABASE_SWEEP_MINUTES,beat_schedule
+    assert IDLE_DATABASE_SWEEP_SECONDS>300
+    assert beat_schedule['outbox']['schedule']._orig_minute==f'*/{IDLE_DATABASE_SWEEP_MINUTES}'
+    assert beat_schedule['tokens']['schedule']._orig_minute==f'*/{IDLE_DATABASE_SWEEP_MINUTES}'
+
+def test_new_media_is_enqueued_without_waiting_for_sweep(client,monkeypatch):
+    from akis.config import settings
+    from akis.jobs import enqueue_media
+    with Session() as db:
+        cid=db.scalar(select(Company.id));uid=db.scalar(select(User.id))
+        db.add(MediaAsset(id='new-asset',company_id=cid,uploaded_by=uid,filename='new.jpg',storage_key='new.jpg',mime_type='image/jpeg',status='processing'))
+        db.commit()
+    queued=[]
+    monkeypatch.setattr(settings,'queue_mode','celery')
+    monkeypatch.setattr('akis.jobs.process_media.delay',lambda identifier: queued.append(identifier))
+    enqueue_media('new-asset')
+    assert queued==['new-asset']
+    with Session() as db: assert db.get(MediaAsset,'new-asset').status=='queued'
+
+def test_direct_media_enqueue_releases_claim_when_broker_fails(client,monkeypatch):
+    from akis.config import settings
+    from akis.jobs import enqueue_media
+    with Session() as db:
+        cid=db.scalar(select(Company.id));uid=db.scalar(select(User.id))
+        db.add(MediaAsset(id='new-asset-fail',company_id=cid,uploaded_by=uid,filename='new.jpg',storage_key='new.jpg',mime_type='image/jpeg',status='processing'))
+        db.commit()
+    def unavailable(_identifier): raise ConnectionError('broker unavailable')
+    monkeypatch.setattr(settings,'queue_mode','celery')
+    monkeypatch.setattr('akis.jobs.process_media.delay',unavailable)
+    enqueue_media('new-asset-fail')
+    with Session() as db: assert db.get(MediaAsset,'new-asset-fail').status=='processing'

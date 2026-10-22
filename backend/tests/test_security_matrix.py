@@ -605,7 +605,8 @@ def test_interrupted_upload_leaves_no_file(client):
         async def close(self): pass
     before=set(Path(settings.media_root).iterdir())
     with Session() as db: uid=db.scalar(select(User.id))
-    with pytest.raises(ClientDisconnect): asyncio.run(main.upload(file=Broken(),actor=Actor(uid,'a@b.c',True,a_company(),'admin')))
+    from fastapi import BackgroundTasks
+    with pytest.raises(ClientDisconnect): asyncio.run(main.upload(background=BackgroundTasks(),file=Broken(),actor=Actor(uid,'a@b.c',True,a_company(),'admin')))
     assert set(Path(settings.media_root).iterdir())==before
     with Session() as db: assert db.scalar(select(func.count()).select_from(MediaAsset))==0
 
