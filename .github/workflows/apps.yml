@@ -6,7 +6,7 @@ name: Uygulamalar
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   push:
     tags: ['v*']
 
