@@ -9,7 +9,7 @@ Tarih: 2026-09-28 · Kapsam: `akis-dev` klasörü (son güvenlik/performans/QOL 
 | Kontrol | Sonuç |
 |---|---|
 | `git status` / branch / HEAD | **Yapılamadı.** `akis-dev` ve `akis-main` git deposu değil (`fatal: not a git repository`). Commit hash yok. |
-| Referans nokta | Değişikliklerden önce alınan tam kopya: `C:\Users\yugan\akis-dev-snapshot` (diff'ler buna göre). |
+| Referans nokta | Değişikliklerden önce alınan tam kopya: `<değişiklik öncesi yerel kopya>` (diff'ler buna göre). |
 | Commit/push | Kullanıcı onayıyla `https://github.com/MertLyzon/akis` deposunun `dev` dalına gönderildi. Commit hash'i için `git log -1 dev` (rapor aynı commit'in içinde olduğu için hash burada yazılamaz). |
 | Gerçek veri | Neon/`.env` hiç okunmadı ve bağlanılmadı. Testler geçici SQLite ve geçici yerel PostgreSQL 16 (127.0.0.1:55432, trust, temp klasör) üzerinde. Gerçek sosyal medya hesabına istek atılmadı; platform yanıtları taklit edildi. |
 

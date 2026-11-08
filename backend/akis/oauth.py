@@ -1,4 +1,4 @@
-import base64, hashlib, html, json, secrets
+import base64, hashlib, html, json, logging, secrets
 from urllib.parse import urlencode, urlsplit
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse
@@ -12,6 +12,7 @@ from .errors import PlatformError
 from .config import settings
 
 router=APIRouter()
+log=logging.getLogger(__name__)
 SCOPES={'x':'tweet.read tweet.write users.read offline.access media.write','tiktok':'user.info.basic,video.upload','instagram':'instagram_business_basic,instagram_business_content_publish','whatsapp':'whatsapp_business_management,whatsapp_business_messaging'}
 
 def _instagram_request(stage,*args,**kwargs):
@@ -105,7 +106,10 @@ def callback(platform:str,req:Request):
             ok=True;message='Hesabın bağlandı. Bu pencereyi kapatabilirsin.'
     except HTTPException as exc: message=str(exc.detail)
     except PlatformError as exc: message=f'{exc.message} (Kod: {exc.code})'
-    except Exception: message='Hesap bağlanamadı. Uygulama bilgilerini ve kayıtlı dönüş adresini kontrol et.'
+    except Exception as exc:
+        # Only the exception type is logged: library error text can contain request URLs with tokens or secrets.
+        log.error('OAuth callback failed platform=%s error=%s',platform,type(exc).__name__)
+        message='Hesap bağlanamadı. Uygulama bilgilerini ve kayıtlı dönüş adresini kontrol et.'
     event=json.dumps({'type':'akis-oauth','ok':ok,'message':message}).replace('<','\\u003c')
     origin=json.dumps(settings.app_origin)
     return HTMLResponse(f'<!doctype html><html lang="tr"><meta charset="utf-8"><title>Akış bağlantı</title><body style="font:16px system-ui;padding:40px"><h1>Akış</h1><p>{html.escape(message)}</p><a href="/">Akış’a dön</a><script>if(window.opener){{window.opener.postMessage({event},{origin});}}{ "window.close();" if ok else "" }</script></body></html>',headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer'})

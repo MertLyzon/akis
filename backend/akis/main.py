@@ -107,6 +107,21 @@ class ApiGZip(GZipMiddleware):
 # Registered before guards so it sits inside it: guards re-streams bodies, which would make gzip ignore minimum_size.
 app.add_middleware(ApiGZip,minimum_size=1024)
 
+MAX_BODY_BYTES=2*1024*1024  # every JSON API body is tiny; only POST /api/media carries files (own, larger limit below)
+
+async def read_capped_body(req,limit):
+    """Read a request body but never hold more than `limit` bytes; None means it is larger.
+    The result is cached on the request so the endpoint still receives the body unchanged."""
+    declared=req.headers.get('content-length','')
+    if declared.isdigit() and int(declared)>limit: return None
+    chunks=[];size=0
+    async for chunk in req.stream():
+        size+=len(chunk)
+        if size>limit: return None
+        chunks.append(chunk)
+    body=b''.join(chunks);req._body=body
+    return body
+
 @app.middleware('http')
 async def guards(req,call_next):
     if settings.local_mode and req.url.hostname not in ('localhost','127.0.0.1','testserver'):
@@ -121,7 +136,12 @@ async def guards(req,call_next):
             return JSONResponse({'error':f'Dosya en fazla {settings.max_upload_mb} MB olabilir.'},413)
     if req.method not in ('GET','HEAD','OPTIONS'):
         if req.headers.get('origin','') not in allowed_origins(): return JSONResponse({'error':'İstek kaynağı doğrulanamadı.'},403)
-        if req.headers.get('content-type','').startswith('application/json') and b'\\u0000' in (await req.body()).lower(): return JSONResponse({'error':'Metinde geçersiz karakter var.'},400)
+        if not (req.method=='POST' and req.url.path=='/api/media'):
+            # The Origin header is trivially forged by non-browser clients, so this runs before any login:
+            # without a cap one request could make the API hold an arbitrarily large body in memory.
+            body=await read_capped_body(req,MAX_BODY_BYTES)
+            if body is None: return JSONResponse({'error':'İstek gövdesi çok büyük.'},413)
+            if req.headers.get('content-type','').startswith('application/json') and b'\\u0000' in body.lower(): return JSONResponse({'error':'Metinde geçersiz karakter var.'},400)
     if '\x00' in unquote(req.url.path) or '%00' in req.url.query: return JSONResponse({'error':'Adreste geçersiz karakter var.'},400)
     response=await call_next(req)
     if req.method in ('POST','PUT','PATCH','DELETE') and response.status_code<400:
